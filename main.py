@@ -30,15 +30,15 @@ def read_root():
 
 # Eventos de Socket.IO
 
-@sio.event
+@sio_app.event
 async def connect(sid, environ):
     print(f"Cliente conectado: {sid}")
 
-@sio.event
+@sio_app.event
 async def disconnect(sid):
     print(f"Cliente desconectado: {sid}")
 
-@sio.event
+@sio_app.event
 async def user_message(sid, data):
     print(f"Recibido mensaje: {data}")
     # Llama al modelo OpenAI y responde al usuario
