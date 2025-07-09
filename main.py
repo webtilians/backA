@@ -1,21 +1,18 @@
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+import socketio
 from langchain_openai import ChatOpenAI
 
 load_dotenv()
 
-# Crea el servidor socketio
-sio = socketio.AsyncServer(cors_allowed_origins="*")
+# Inicializa FastAPI y Socket.IO
 app = FastAPI()
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 llm = ChatOpenAI()
 
-# Monta SocketIO en FastAPI
-import socketio
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
-
-# Middlewares CORS
+# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Socket.IO ASGI app
+# Monta Socket.IO sobre FastAPI
 sio_app = socketio.ASGIApp(sio, app)
 
 @app.get("/")
@@ -40,10 +37,6 @@ async def disconnect(sid):
 
 @sio.event
 async def user_message(sid, data):
-    # Recibe mensaje del usuario
     print(f"Recibido mensaje: {data}")
     response = llm.predict(data)
     await sio.emit("bot-message", response, to=sid)
-
-# ¡Recuerda arrancar el servidor con Uvicorn usando la app de SocketIO!
-# uvicorn main:sio_app --host 0.0.0.0 --port 8000
