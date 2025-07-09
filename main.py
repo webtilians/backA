@@ -86,9 +86,11 @@ async def user_message(sid, data):
     from langchain.prompts import ChatPromptTemplate
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Eres el asistente de gestión hotelera Aselvia. Usa las tools para responder sobre reservas y disponibilidad."),
-        ("user", "{input}"),
-    ])
+    ("system", "Eres el asistente de gestión hotelera Aselvia. Usa las tools para responder sobre reservas y disponibilidad."),
+    ("user", "{input}"),
+    ("system", "{agent_scratchpad}")   # <--- Añade esto SIEMPRE, aunque esté vacío
+])
+
 
     agent = create_openai_functions_agent(llm, hotel_tools, prompt)
     agent_executor = AgentExecutor(agent=agent, tools=hotel_tools, verbose=True)
