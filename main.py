@@ -1,18 +1,17 @@
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import socketio
 from langchain_openai import ChatOpenAI
+import socketio  # <--- IMPORTANTE, ANTES DE USARLO
 
 load_dotenv()
 
-# Inicializa FastAPI y Socket.IO
+# Crea el servidor socketio
+sio = socketio.AsyncServer(cors_allowed_origins="*")
 app = FastAPI()
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 llm = ChatOpenAI()
 
-# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Monta Socket.IO sobre FastAPI
+# Monta SocketIO en FastAPI
 sio_app = socketio.ASGIApp(sio, app)
 
 @app.get("/")
