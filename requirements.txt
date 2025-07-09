@@ -1,7 +1,7 @@
-fastapi
-uvicorn
-python-socketio[asgi] >=5.7.2
-python-engineio >=4.3.0
+fastapi==0.111.0
+python-socketio[asyncio_client]==5.11.2
+python-engineio==4.9.1
+uvicorn==0.29.0
 langchain-openai
 openai
 python-dotenv
