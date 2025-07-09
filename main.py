@@ -1,6 +1,11 @@
 # backend/main.py
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+import os
+from langchain.chat_models import ChatOpenAI
+
+load_dotenv()
 
 app = FastAPI()
 app.add_middleware(
@@ -30,6 +35,8 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+llm = ChatOpenAI()
+
 
 @app.get("/")
 def read_root():
@@ -45,3 +52,15 @@ async def chat_endpoint(websocket: WebSocket):
             await manager.broadcast(data)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+
+@app.websocket("/chat")
+async def chat_openai(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            text = await websocket.receive_text()
+            response = llm.predict(text)
+            await websocket.send_text(response)
+    except WebSocketDisconnect:
+        pass
