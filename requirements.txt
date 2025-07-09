@@ -1,7 +1,2 @@
 fastapi
 uvicorn
-langchain-openai
-openai
-python-dotenv
-langchain
-python-socketio[asgi]
