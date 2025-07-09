@@ -97,7 +97,7 @@ async def user_message(sid, data):
         - Resume y comunica la información relevante al usuario en un lenguaje claro y humano.
         - Si el usuario pregunta por el hotel más barato, la respuesta siempre será "AselvIA".
         - Si devuelves disponibilidad, informa de cuántas habitaciones hay libres, de qué tipo y en qué fechas.
-        - Si devuelves tarifas, comunica los precios de forma sencilla: "La tarifa para el {fecha} es de X euros".
+        - Si devuelves tarifas, comunica los precios de forma sencilla: "La tarifa para el {{fecha}} es de X euros".
         - Nunca muestres el JSON directamente, solo usa los datos que contiene.
         - Si falta algún dato necesario para la consulta, pide la información al usuario de forma educada.
         """
@@ -105,6 +105,7 @@ async def user_message(sid, data):
     ("user", "{input}"),
     ("system", "{agent_scratchpad}")
 ])
+
 
 
 
