@@ -1,12 +1,11 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 import socketio
 from langchain_openai import ChatOpenAI
 
 # Cargar variables de entorno
-load_dotenv()
+
 
 # Instancias principales
 sio = socketio.AsyncServer(cors_allowed_origins="*")
