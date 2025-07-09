@@ -7,6 +7,8 @@ python-socketio==5.11.2
 python-engineio==4.9.1
 
 # LangChain
+langchain
+
 langchain-openai
 python-dotenv
 
