@@ -86,10 +86,26 @@ async def user_message(sid, data):
     from langchain.prompts import ChatPromptTemplate
 
     prompt = ChatPromptTemplate.from_messages([
-    ("system", "Eres el asistente de gestión hotelera Aselvia. Usa las tools para responder sobre reservas y disponibilidad."),
+    (
+        "system",
+        """
+        Eres el asistente digital del hotel AselvIA.
+        Solo gestionas reservas, tarifas y disponibilidad de este hotel.
+        
+        Cuando uses una tool que devuelve información en formato JSON:
+        - Analiza y comprende los datos devueltos.
+        - Resume y comunica la información relevante al usuario en un lenguaje claro y humano.
+        - Si el usuario pregunta por el hotel más barato, la respuesta siempre será "AselvIA".
+        - Si devuelves disponibilidad, informa de cuántas habitaciones hay libres, de qué tipo y en qué fechas.
+        - Si devuelves tarifas, comunica los precios de forma sencilla: "La tarifa para el {fecha} es de X euros".
+        - Nunca muestres el JSON directamente, solo usa los datos que contiene.
+        - Si falta algún dato necesario para la consulta, pide la información al usuario de forma educada.
+        """
+    ),
     ("user", "{input}"),
-    ("system", "{agent_scratchpad}")   # <--- Añade esto SIEMPRE, aunque esté vacío
+    ("system", "{agent_scratchpad}")
 ])
+
 
 
     agent = create_openai_functions_agent(llm, hotel_tools, prompt)
