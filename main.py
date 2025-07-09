@@ -5,40 +5,23 @@ import socketio
 from langchain_openai import ChatOpenAI
 
 # --- Carga de Variables de Entorno (Buena Práctica) ---
-# Descomenta las siguientes líneas si usas un archivo .env para tus claves de API
 # from dotenv import load_dotenv
 # load_dotenv()
-llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+
 # --- Instancias Principales ---
-# 1. Servidor Socket.IO en modo asíncrono ASGI
-#    cors_allowed_origins="*" permite conexiones desde cualquier origen.
-#    Para producción, es mejor restringirlo a tu dominio de frontend.
+llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
 
-
-# 2. Aplicación FastAPI
+# 1. FastAPI app
 app = FastAPI(title="API del Chatbot de aselvia")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-# 3. Modelo de Lenguaje de LangChain
-llm = ChatOpenAI()
 
-# --- Middlewares ---
-# Se añade el middleware de CORS a FastAPI para manejar las peticiones HTTP
-# y la negociación inicial de Socket.IO.
+# 2. Middleware CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Orígenes permitidos
-    allow_credentials=True,  # Permite cookies y cabeceras de autorización
-    allow_methods=["*"],  # Métodos HTTP permitidos (GET, POST, etc.)
-    allow_headers=["*"],  # Cabeceras HTTP permitidas
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
-# --- Montaje de la Aplicación ASGI ---
-# Se combina el servidor de Socket.IO con la aplicación FastAPI.
-# La aplicación resultante se reasigna a la variable 'app'.
-# Esto simplifica la ejecución, permitiendo usar 'uvicorn main:app'.
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins="*")
-app = socketio.ASGIApp(sio, other_asgi_app=app)
-
 
 # --- Endpoints HTTP (FastAPI) ---
 @app.get("/")
@@ -46,6 +29,10 @@ def read_root():
     """Endpoint de prueba para verificar que el servidor FastAPI está funcionando."""
     return {"message": "Hola Mundo desde FastAPI + Socket.IO!"}
 
+# Puedes agregar aquí otros endpoints si los necesitas...
+
+# --- Socket.IO ---
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins="*")
 
 # --- Eventos de Socket.IO ---
 @sio.event
@@ -65,13 +52,11 @@ async def user_message(sid, data):
     Procesa el mensaje con LangChain y devuelve la respuesta.
     """
     print(f"Mensaje recibido de {sid}: {data}")
-    
-    # ¡IMPORTANTE! Se usa 'ainvoke' para la llamada asíncrona al modelo.
-    # Esto evita bloquear el servidor y permite atender a múltiples clientes
-    # de forma concurrente.
     response_message = await llm.ainvoke(data)
-    
-    # El resultado de 'ainvoke' es un objeto (ej. AIMessage).
-    # Se extrae el contenido de texto para enviarlo de vuelta.
     await sio.emit("bot-message", response_message.content, to=sid)
 
+# --- Montaje de la Aplicación ASGI ---
+asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
+
+# Para Railway o uvicorn, usa:
+# uvicorn main:asgi_app
