@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
-import socketio
 from langchain_openai import ChatOpenAI
 
 load_dotenv()
