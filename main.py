@@ -1,14 +1,22 @@
-# backend/main.py
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
+from fastapi import FastAPI
+import socketio
 from langchain_openai import ChatOpenAI
-
 
 load_dotenv()
 
+# Crea el servidor socketio
+sio = socketio.AsyncServer(cors_allowed_origins="*")
 app = FastAPI()
+llm = ChatOpenAI()
+
+# Monta SocketIO en FastAPI
+import socketio
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
+
+# Middlewares CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,52 +24,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: str):
-        for connection in list(self.active_connections):
-            await connection.send_text(message)
-
-
-manager = ConnectionManager()
-
-llm = ChatOpenAI()
-
+# Socket.IO ASGI app
+sio_app = socketio.ASGIApp(sio, app)
 
 @app.get("/")
 def read_root():
     return {"message": "Hola Mundo desde FastAPI!"}
 
+@sio.event
+async def connect(sid, environ):
+    print(f"Cliente conectado: {sid}")
 
-@app.websocket("/ws/chat")
-async def chat_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await manager.broadcast(data)
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+@sio.event
+async def disconnect(sid):
+    print(f"Cliente desconectado: {sid}")
 
+@sio.event
+async def user_message(sid, data):
+    # Recibe mensaje del usuario
+    print(f"Recibido mensaje: {data}")
+    response = llm.predict(data)
+    await sio.emit("bot-message", response, to=sid)
 
-@app.websocket("/chat")
-async def chat_openai(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        while True:
-            text = await websocket.receive_text()
-            response = llm.predict(text)
-            await websocket.send_text(response)
-    except WebSocketDisconnect:
-        pass
+# ¡Recuerda arrancar el servidor con Uvicorn usando la app de SocketIO!
+# uvicorn main:sio_app --host 0.0.0.0 --port 8000
