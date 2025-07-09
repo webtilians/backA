@@ -3,7 +3,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
+
 
 load_dotenv()
 
