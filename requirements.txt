@@ -1,8 +1,14 @@
+# FastAPI y Servidor ASGI
 fastapi==0.111.0
-python-socketio[asyncio_client]==5.11.2
-python-engineio==4.9.1
 uvicorn==0.29.0
+
+# Socket.IO y su motor (versiones compatibles)
+python-socketio==5.11.2
+python-engineio==4.9.1
+
+# LangChain
 langchain-openai
-openai
 python-dotenv
-langchain
+
+# Es necesario para que FastAPI maneje el CORS correctamente
+python-multipart
