@@ -8,7 +8,7 @@ python-engineio==4.9.1
 
 # LangChain
 langchain
-langgraph
+langgraph>=0.0.50
 langchain-openai
 python-dotenv
 
