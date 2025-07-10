@@ -163,20 +163,37 @@ async def disconnect(sid):
 
 @sio.event
 async def user_message(sid, data):
-    # data = str del mensaje del usuario
     user_input = data.get("mensaje") if isinstance(data, dict) else data
     memory = get_memory(sid)
     today = datetime.date.today().strftime("%Y-%m-%d")
+
+    # Añade el mensaje del usuario a la memoria
     memory.chat_memory.add_user_message(user_input)
-    # El agente recibe input, historial y fecha (en contexto por SystemMessage)
+
+    # Si por cualquier motivo el historial está vacío, añade el SystemMessage de nuevo
+    if not memory.chat_memory.messages:
+        memory.chat_memory.add_message(SystemMessage(content=
+            "Eres el asistente digital del hotel AselvIA. Solo gestionas reservas, tarifas y disponibilidad de este hotel. "
+            "Responde siempre en español."
+        ))
+
+    # --- Llama al agente con historial "seguro" ---
+    chat_history = memory.chat_memory.messages
+    if not chat_history or not isinstance(chat_history[0], SystemMessage):
+        # Refuerzo: el primer mensaje debe ser SystemMessage
+        chat_history = [
+            SystemMessage(content="Eres el asistente digital del hotel AselvIA. Solo gestionas reservas, tarifas y disponibilidad de este hotel.")
+        ] + chat_history
+
     result = agent.invoke({
         "input": user_input,
-        "chat_history": memory.chat_memory.messages,
+        "chat_history": chat_history,
         "today": today
     })
     final_msg = result.get("output", "Sin respuesta del agente.")
     memory.chat_memory.add_ai_message(final_msg)
     await sio.emit("bot-message", final_msg, to=sid)
+
 
 # --- Montaje ASGI ---
 asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
