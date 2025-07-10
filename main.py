@@ -8,10 +8,11 @@ import socketio
 
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
+from langchain.memory import ConversationBufferMemory
 from langchain.schema import HumanMessage, AIMessage
 
+from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import create_react_agent
-from langchain.memory import ConversationBufferMemory
 
 # --- Configuración FastAPI & Socket.IO ---
 app = FastAPI(title="API Aselvia + LangGraph (REACT AGENT)")
@@ -143,20 +144,34 @@ PROMPT = (
     "Cuando devuelvas tarifas, usa: 'La tarifa para el {{fecha}} es de X euros'."
 )
 
-# --- Inicialización del agente LangGraph REACT ---
+# --- Inicialización del agente REACT ---
 llm = ChatOpenAI(model="gpt-4-turbo", temperature=0, streaming=True)
-graph = create_react_agent(
-    llm=llm,
-    tools=hotel_tools,
-    prompt=PROMPT,
-    memory_key="chat_history",
-    input_key="input"
-)
+agent = create_react_agent(llm, hotel_tools, PROMPT)
+
+# --- Montaje del grafo con un único nodo ---
+def agent_node(state):
+    # state contiene: {"input": str, "chat_history": [messages], ...}
+    question = state.get("input", "")
+    chat_history = state.get("chat_history", [])
+    today = state.get("today", datetime.date.today().strftime("%Y-%m-%d"))
+    # Usamos el agente para obtener la respuesta
+    result = agent.invoke({
+        "input": question,
+        "chat_history": chat_history,
+        "today": today
+    })
+    return {"output": result["output"]}
+
+graph_builder = StateGraph()
+graph_builder.add_node("agent", agent_node)
+graph_builder.set_entry_point("agent")
+graph_builder.add_edge("agent", END)
+graph = graph_builder.compile()
 
 # --- FastAPI endpoint (opcional) ---
 @app.get("/")
 def read_root():
-    return {"message": "API LangGraph AselvIA funcionando (REACT AGENT)"}
+    return {"message": "API LangGraph AselvIA funcionando (REACT AGENT, compatible v0.5.2)"}
 
 # --- Socket.IO eventos asíncronos ---
 @sio.event
@@ -176,23 +191,15 @@ async def user_message(sid, data):
     memory = get_memory(sid)
     today = datetime.date.today().strftime("%Y-%m-%d")
     memory.chat_memory.add_user_message(user_input)
-    # Ejecuta el REACT agent en modo streaming
-    async for step in graph.astream(
-        {"input": user_input, "chat_history": memory.chat_memory.messages, "today": today}
-    ):
-        # Cuando va a ejecutar una tool, avisa al front
-        if "agent_action" in step:
-            await sio.emit("tool-used", {
-                "tool": step["agent_action"].tool,
-                "input": step["agent_action"].tool_input,
-            }, to=sid)
-        # Cuando hay respuesta final, mándala y termina
-        if "output" in step:
-            final_msg = step["output"]
-            memory.chat_memory.add_ai_message(final_msg)
-            await sio.emit("bot-message", final_msg, to=sid)
-            await sio.emit("tool-used", {"tool": None}, to=sid)
-            break
+    # Ejecuta el grafo con el estado adecuado
+    result = graph.invoke({
+        "input": user_input,
+        "chat_history": memory.chat_memory.messages,
+        "today": today
+    })
+    final_msg = result.get("output", "Sin respuesta del agente.")
+    memory.chat_memory.add_ai_message(final_msg)
+    await sio.emit("bot-message", final_msg, to=sid)
 
 # --- Montaje ASGI ---
 asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
