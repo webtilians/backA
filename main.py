@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import socketio
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
+from langchain.schema import HumanMessage, AIMessage
 import uuid
 import datetime
 
@@ -176,27 +177,8 @@ hotel_tools = [consultar_disponibilidad, listar_tipos_habitaciones, crear_reserv
 # --- Socket.IO ---
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins="*")
 
-# --- HISTORIAL DE CHAT (por SID de usuario) ---
-def guardar_historial(sid, remitente, mensaje):
-    """
-    Guarda cada mensaje enviado o recibido en historial_chat.json agrupado por SID.
-    """
-    historial = {}
-    if os.path.exists("historial_chat.json"):
-        with open("historial_chat.json", "r", encoding="utf-8") as f:
-            try:
-                historial = json.load(f)
-            except Exception:
-                historial = {}
-    if sid not in historial:
-        historial[sid] = []
-    historial[sid].append({
-        "remitente": remitente,
-        "mensaje": mensaje,
-        "timestamp": datetime.datetime.now().isoformat()
-    })
-    with open("historial_chat.json", "w", encoding="utf-8") as f:
-        json.dump(historial, f, indent=2, ensure_ascii=False)
+
+
 
 # --- Eventos de Socket.IO ---
 @sio.event
@@ -209,20 +191,31 @@ async def disconnect(sid):
 
 @sio.event
 async def user_message(sid, data):
-    print(f"Mensaje recibido de {sid}: {data}")
-    guardar_historial(sid, "usuario", data)  # Guardar mensaje del usuario
+    # Espera recibir: data = { "mensaje": ..., "historial": [...] }
+    user_input = data.get("mensaje") if isinstance(data, dict) else data
+    historial = data.get("historial") if isinstance(data, dict) else []
 
-    # --- LangChain Agent con tools ---
+    # Prepara el historial para LangChain
+    chat_history = []
+    for msg in historial:
+        if msg.get('sender') == 'user':
+            chat_history.append(HumanMessage(content=msg.get('text')))
+        elif msg.get('sender') == 'bot' or msg.get('sender') == 'assistant':
+            chat_history.append(AIMessage(content=msg.get('text')))
+    # También puedes agregar el mensaje actual si quieres que sea consistente:
+    chat_history.append(HumanMessage(content=user_input))
+
     from langchain.agents import create_openai_functions_agent, AgentExecutor
     from langchain.prompts import ChatPromptTemplate
+    today = datetime.date.today().strftime("%Y-%m-%d")
 
     prompt = ChatPromptTemplate.from_messages([
         (
             "system",
-            """
+            f"""
             Eres el asistente digital del hotel AselvIA.
             Solo gestionas reservas, tarifas y disponibilidad de este hotel.
-
+            La fecha de hoy es {today}.
             Cuando uses una tool que devuelve información en formato JSON:
             - Analiza y comprende los datos devueltos.
             - Resume y comunica la información relevante al usuario en un lenguaje claro y humano.
@@ -231,7 +224,7 @@ async def user_message(sid, data):
             - Si devuelves tarifas, comunica los precios de forma sencilla: "La tarifa para el {{fecha}} es de X euros".
             - Nunca muestres el JSON directamente, solo usa los datos que contiene.
             - Si falta algún dato necesario para la consulta, pide la información al usuario de forma educada.
-            -Si el usuario pregunta que reservas hay hechas usa la tool de listar reservas y muestra la informacion de forma clara
+            - Si el usuario pregunta qué reservas hay hechas usa la tool de listar reservas y muestra la información de forma clara.
             - Si vas a realizar una reserva, siempre pide el nombre completo, email y teléfono antes de confirmarla.
             """
         ),
@@ -242,8 +235,12 @@ async def user_message(sid, data):
     agent = create_openai_functions_agent(llm, hotel_tools, prompt)
     agent_executor = AgentExecutor(agent=agent, tools=hotel_tools, verbose=True)
 
-    response = await agent_executor.ainvoke({"input": data})
-    guardar_historial(sid, "bot", response["output"])  # Guardar respuesta del bot
+    response = await agent_executor.ainvoke({
+        "input": user_input,
+        "chat_history": chat_history,
+        "today": today
+    })
+
     await sio.emit("bot-message", response["output"], to=sid)
 
 # --- Montaje de la Aplicación ASGI ---
