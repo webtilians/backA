@@ -12,6 +12,7 @@ from langchain.schema import HumanMessage, AIMessage
 
 from langgraph.graph import StateGraph, END
 from langchain.memory import ConversationBufferMemory
+from langgraph.prebuilt import ChatAgentNode
 
 # --- Configuración y arranque FastAPI/Socket.IO ---
 app = FastAPI(title="API Aselvia + LangGraph")
@@ -136,13 +137,8 @@ def get_memory(sid):
     return conversaciones[sid]
 
 # --- LangGraph: Definición del flujo conversacional ---
-from langgraph.prebuilt import ToolNode, ToolExecutorNode, ToolNodeOutput
-from langgraph.prebuilt import ChatAgentNode
-
 def get_graph(tools, llm):
-    # Nodos: 1) el LLM, 2) ejecución de tools
     builder = StateGraph()
-    # Nodo principal: agente conversacional
     agent_node = ChatAgentNode(
         llm,
         system_prompt=(
@@ -159,14 +155,8 @@ def get_graph(tools, llm):
         input_key="input"
     )
     builder.add_node("agent", agent_node)
-    # Nodo: ejecutor de herramientas (cuando el agente decide llamar una tool)
-    tool_node = ToolExecutorNode(tools)
-    builder.add_node("tool", tool_node)
-    # Edges: desde agent, si usa tool, va a tool, si no END; desde tool siempre vuelve a agent
-    builder.add_edge("agent", "tool", condition=ToolNodeOutput.is_tool_call)
-    builder.add_edge("agent", END, condition=ToolNodeOutput.is_final)
-    builder.add_edge("tool", "agent")
     builder.set_entry_point("agent")
+    builder.add_edge("agent", END)
     return builder.compile()
 
 llm = ChatOpenAI(model="gpt-4-turbo", temperature=0, streaming=True)
@@ -202,16 +192,17 @@ async def user_message(sid, data):
         {"input": user_input, "chat_history": memory.chat_memory.messages, "today": today}
     ):
         # Si se va a usar una tool, avisa al front (ejemplo profesional)
-        if "tool" in step:
-            tool_name = step["tool"]["name"]
-            await sio.emit("tool-used", {"tool": tool_name, "input": step["tool"].get("args")}, to=sid)
+        # En la versión actual, el paso de tool puede estar en "agent_action"
+        if "agent_action" in step:
+            await sio.emit("tool-used", {
+                "tool": step["agent_action"].tool,
+                "input": step["agent_action"].tool_input,
+            }, to=sid)
         # Si hay respuesta final, mándala y termina
-        if "agent" in step and "output" in step["agent"]:
-            final_msg = step["agent"]["output"]
-            # Añade al historial como respuesta AI
+        if "output" in step:
+            final_msg = step["output"]
             memory.chat_memory.add_ai_message(final_msg)
             await sio.emit("bot-message", final_msg, to=sid)
-            # Borra la señal de tool en el front (UX pro)
             await sio.emit("tool-used", {"tool": None}, to=sid)
             break
 
