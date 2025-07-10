@@ -9,12 +9,11 @@ import socketio
 from langchain_openai import ChatOpenAI
 from langchain.tools import tool
 from langchain.memory import ConversationBufferMemory
-from langchain.schema import HumanMessage, AIMessage
+from langchain.schema import SystemMessage, HumanMessage, AIMessage
 
-from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import create_react_agent
 
-# --- Configuración FastAPI & Socket.IO ---
+# --- CONFIGURACIÓN FastAPI & Socket.IO ---
 app = FastAPI(title="API Aselvia + LangGraph (REACT AGENT)")
 app.add_middleware(
     CORSMiddleware,
@@ -25,7 +24,7 @@ app.add_middleware(
 )
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins="*")
 
-# --- Tools del hotel ---
+# --- TOOLS DEL HOTEL ---
 @tool
 def crear_reserva(nombre: str, tipo_habitacion: str, fecha: str, email: str = "", telefono: str = "", personas: int = 1) -> dict:
     """Crea una reserva y actualiza disponibilidad"""
@@ -125,53 +124,36 @@ def listar_reservas() -> list:
 
 hotel_tools = [consultar_disponibilidad, listar_tipos_habitaciones, crear_reserva, listar_reservas]
 
-# --- Memoria por sesión ---
+# --- MEMORIA POR SESIÓN ---
 conversaciones = {}  # clave: sid, valor: ConversationBufferMemory
 
 def get_memory(sid):
     if sid not in conversaciones:
-        conversaciones[sid] = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        # Instrucciones de sistema SIEMPRE al inicio del historial
+        memory.chat_memory.add_message(SystemMessage(content=
+            "Eres el asistente digital del hotel AselvIA. Solo gestionas reservas, tarifas y disponibilidad de este hotel. "
+            "Responde siempre en español. Informa al usuario de cada acción que vas a realizar (por ejemplo: 'Consultando disponibilidad...')."
+            "Nunca muestres el JSON, solo resume la información de manera clara. "
+            "Si falta información para una reserva, pide nombre completo, email y teléfono. "
+            "Cuando devuelvas tarifas, usa: 'La tarifa para el {fecha} es de X euros'."
+        ))
+        conversaciones[sid] = memory
     return conversaciones[sid]
 
-# --- Prompt del agente ---
-PROMPT = (
-    "Eres el asistente digital del hotel AselvIA.\n"
-    "Gestionas reservas, tarifas y disponibilidad SOLO de este hotel.\n"
-    "La fecha de hoy es {today}.\n"
-    "Cuando uses una herramienta, indícalo antes al usuario (por ejemplo: 'Consultando disponibilidad...').\n"
-    "Nunca muestres el JSON, solo resume la información.\n"
-    "Si falta información para una reserva, pide nombre completo, email y teléfono.\n"
-    "Cuando devuelvas tarifas, usa: 'La tarifa para el {{fecha}} es de X euros'."
+# --- AGENTE (LangGraph REACT, moderno) ---
+llm = ChatOpenAI(model="gpt-4-turbo", temperature=0, streaming=True)
+agent = create_react_agent(
+    model=llm,
+    tools=hotel_tools,
+    memory=None,  # Gestionamos memoria nosotros
+    # Puedes pasar prompt=..., pero con SystemMessage en memoria ya funciona como esperas
 )
 
-# --- Inicialización del agente REACT ---
-llm = ChatOpenAI(model="gpt-4-turbo", temperature=0, streaming=True)
-agent = create_react_agent(llm, hotel_tools, PROMPT)
-
-# --- Montaje del grafo con un único nodo ---
-def agent_node(state):
-    # state contiene: {"input": str, "chat_history": [messages], ...}
-    question = state.get("input", "")
-    chat_history = state.get("chat_history", [])
-    today = state.get("today", datetime.date.today().strftime("%Y-%m-%d"))
-    # Usamos el agente para obtener la respuesta
-    result = agent.invoke({
-        "input": question,
-        "chat_history": chat_history,
-        "today": today
-    })
-    return {"output": result["output"]}
-
-graph_builder = StateGraph()
-graph_builder.add_node("agent", agent_node)
-graph_builder.set_entry_point("agent")
-graph_builder.add_edge("agent", END)
-graph = graph_builder.compile()
-
-# --- FastAPI endpoint (opcional) ---
+# --- FastAPI endpoint test ---
 @app.get("/")
 def read_root():
-    return {"message": "API LangGraph AselvIA funcionando (REACT AGENT, compatible v0.5.2)"}
+    return {"message": "API LangGraph AselvIA funcionando (REACT AGENT, compatible >0.6.21)"}
 
 # --- Socket.IO eventos asíncronos ---
 @sio.event
@@ -186,13 +168,13 @@ async def disconnect(sid):
 
 @sio.event
 async def user_message(sid, data):
-    # data = { "mensaje": str, "historial": [{sender, text}] }
+    # data = str del mensaje del usuario
     user_input = data.get("mensaje") if isinstance(data, dict) else data
     memory = get_memory(sid)
     today = datetime.date.today().strftime("%Y-%m-%d")
     memory.chat_memory.add_user_message(user_input)
-    # Ejecuta el grafo con el estado adecuado
-    result = graph.invoke({
+    # El agente recibe input, historial y fecha (en contexto por SystemMessage)
+    result = agent.invoke({
         "input": user_input,
         "chat_history": memory.chat_memory.messages,
         "today": today

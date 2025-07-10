@@ -7,9 +7,10 @@ python-socketio==5.11.2
 python-engineio==4.9.1
 
 # LangChain
-langchain
-langgraph>=0.0.50
-langchain-openai
+langgraph>=0.6.21
+langchain>=0.1.17
+langchain-openai>=0.1.8
+
 python-dotenv
 
 # Es necesario para que FastAPI maneje el CORS correctamente
