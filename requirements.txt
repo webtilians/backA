@@ -7,7 +7,7 @@ python-socketio==5.11.2
 python-engineio==4.9.1
 
 # LangChain
-langgraph>=0.6.21
+langgraph>=0.5.2
 langchain>=0.1.17
 langchain-openai>=0.1.8
 
