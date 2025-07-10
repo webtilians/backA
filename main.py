@@ -11,7 +11,7 @@ from langchain.tools import tool
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import SystemMessage, HumanMessage, AIMessage
 
-from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt import create_react_agent  # v0.5.2: SOLO admite (llm, tools)
 
 # --- CONFIGURACIÓN FastAPI & Socket.IO ---
 app = FastAPI(title="API Aselvia + LangGraph (REACT AGENT)")
@@ -130,10 +130,10 @@ conversaciones = {}  # clave: sid, valor: ConversationBufferMemory
 def get_memory(sid):
     if sid not in conversaciones:
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        # Instrucciones de sistema SIEMPRE al inicio del historial
+        # Importante: prompt inicial como primer mensaje de historial (no como argumento a create_react_agent)
         memory.chat_memory.add_message(SystemMessage(content=
             "Eres el asistente digital del hotel AselvIA. Solo gestionas reservas, tarifas y disponibilidad de este hotel. "
-            "Responde siempre en español. Informa al usuario de cada acción que vas a realizar (por ejemplo: 'Consultando disponibilidad...')."
+            "Responde siempre en español. Informa al usuario de cada acción que vas a realizar (por ejemplo: 'Consultando disponibilidad...'). "
             "Nunca muestres el JSON, solo resume la información de manera clara. "
             "Si falta información para una reserva, pide nombre completo, email y teléfono. "
             "Cuando devuelvas tarifas, usa: 'La tarifa para el {fecha} es de X euros'."
@@ -141,19 +141,14 @@ def get_memory(sid):
         conversaciones[sid] = memory
     return conversaciones[sid]
 
-# --- AGENTE (LangGraph REACT, moderno) ---
+# --- AGENTE (LangGraph REACT, v0.5.2) ---
 llm = ChatOpenAI(model="gpt-4-turbo", temperature=0, streaming=True)
-agent = create_react_agent(
-    model=llm,
-    tools=hotel_tools,
-    memory=None,  # Gestionamos memoria nosotros
-    # Puedes pasar prompt=..., pero con SystemMessage en memoria ya funciona como esperas
-)
+agent = create_react_agent(llm, hotel_tools)
 
 # --- FastAPI endpoint test ---
 @app.get("/")
 def read_root():
-    return {"message": "API LangGraph AselvIA funcionando (REACT AGENT, compatible >0.6.21)"}
+    return {"message": "API LangGraph AselvIA funcionando (REACT AGENT, v0.5.2)"}
 
 # --- Socket.IO eventos asíncronos ---
 @sio.event
