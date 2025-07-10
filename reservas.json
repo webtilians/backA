@@ -1,0 +1,12 @@
+[
+  {
+    "id": "RES123456",
+    "nombre": "Enrique Ramos",
+    "tipo_habitacion": "Doble Estándar",
+    "fecha": "2024-07-13",
+    "email": "enrique@email.com",
+    "telefono": "123456789",
+    "personas": 2,
+    "timestamp": "2024-07-07T21:30:00"
+  }
+]
