@@ -30,7 +30,6 @@ app.add_middleware(
 # --- Endpoints HTTP (FastAPI) ---
 @app.get("/")
 def read_root():
-    """Endpoint de prueba para verificar que el servidor FastAPI está funcionando."""
     return {"message": "Hola Mundo desde FastAPI + Socket.IO!"}
 
 # --- TOOLS para LangChain ---
@@ -48,21 +47,29 @@ def crear_reserva(nombre: str, tipo_habitacion: str, fecha: str, email: str = ""
                 reservas = json.load(f)
         else:
             reservas = []
-        
-        # Comprobar disponibilidad en hotel_data.json
+
+        # Leer info habitaciones (stock)
         with open("hotel_data.json", "r", encoding="utf-8") as f:
             data = json.load(f)
-        disponible = False
+
+        # Calcular stock total de ese tipo
+        total = None
         for hab in data["habitaciones"]:
             if hab["tipo"].lower() == tipo_habitacion.lower():
-                for disp in hab["disponibilidad"]:
-                    if disp["fecha"] == fecha and disp["disponibles"] > 0:
-                        disponible = True
-                        disp["disponibles"] -= 1  # Resta una habitación
-                        break
-        if not disponible:
+                total = hab.get("total", 1)  # Por defecto 1 si no está
+                break
+        if total is None:
+            return {"ok": False, "mensaje": f"No se reconoce el tipo de habitación '{tipo_habitacion}'."}
+
+        # Contar reservas ya existentes para esa fecha y tipo
+        reservas_count = 0
+        for r in reservas:
+            if (r["tipo_habitacion"].lower() == tipo_habitacion.lower()) and (r["fecha"] == fecha):
+                reservas_count += 1
+        disponibles = total - reservas_count
+        if disponibles <= 0:
             return {"ok": False, "mensaje": f"No quedan habitaciones '{tipo_habitacion}' para la fecha {fecha}."}
-        
+
         # Guardar reserva
         reserva = {
             "id": f"RES{str(uuid.uuid4())[:8]}",
@@ -77,41 +84,56 @@ def crear_reserva(nombre: str, tipo_habitacion: str, fecha: str, email: str = ""
         reservas.append(reserva)
         with open("reservas.json", "w", encoding="utf-8") as f:
             json.dump(reservas, f, indent=2, ensure_ascii=False)
-        # Guardar hotel_data.json actualizado
-        with open("hotel_data.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+
         return {"ok": True, "mensaje": "Reserva realizada correctamente", "reserva": reserva}
     except Exception as e:
         return {"ok": False, "mensaje": f"Error al crear reserva: {str(e)}"}
 
 @tool
-def consultar_disponibilidad(tipo_habitacion: str = None, fecha: str = None) -> list:
+def consultar_disponibilidad(tipo_habitacion: str, fecha: str) -> dict:
     """
-    Consulta la disponibilidad real de habitaciones desde hotel_data.json.
-    Si se especifica tipo_habitacion y fecha, filtra por esos valores.
+    Devuelve cuántas habitaciones libres hay para una fecha y tipo, calculando dinámicamente.
     """
     try:
         with open("hotel_data.json", "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception as e:
-        return [{"error": f"Error leyendo la base de datos de habitaciones: {str(e)}"}]
-    
-    resultado = []
+        return {"error": f"Error leyendo la base de datos de habitaciones: {str(e)}"}
+    total = None
+    descripcion = ""
+    precio = ""
+    moneda = ""
     for hab in data["habitaciones"]:
-        if tipo_habitacion and hab["tipo"].lower() != tipo_habitacion.lower():
-            continue
-        for disp in hab["disponibilidad"]:
-            if fecha and disp["fecha"] != fecha:
-                continue
-            resultado.append({
-                "tipo": hab["tipo"],
-                "descripcion": hab["descripcion"],
-                "precio": hab["precio"],
-                "moneda": hab["moneda"],
-                "fecha": disp["fecha"],
-                "disponibles": disp["disponibles"]
-            })
-    return resultado
+        if hab["tipo"].lower() == tipo_habitacion.lower():
+            total = hab.get("total", 1)
+            descripcion = hab.get("descripcion", "")
+            precio = hab.get("precio", "")
+            moneda = hab.get("moneda", "")
+            break
+    if total is None:
+        return {"ok": False, "mensaje": f"No se reconoce el tipo de habitación '{tipo_habitacion}'."}
+
+    # Contar reservas existentes
+    reservas_count = 0
+    if os.path.exists("reservas.json"):
+        with open("reservas.json", "r", encoding="utf-8") as f:
+            reservas = json.load(f)
+        for r in reservas:
+            if (r["tipo_habitacion"].lower() == tipo_habitacion.lower()) and (r["fecha"] == fecha):
+                reservas_count += 1
+
+    disponibles = total - reservas_count
+    return {
+        "ok": True,
+        "tipo": tipo_habitacion,
+        "descripcion": descripcion,
+        "precio": precio,
+        "moneda": moneda,
+        "fecha": fecha,
+        "total": total,
+        "reservadas": reservas_count,
+        "disponibles": max(0, disponibles)
+    }
 
 @tool
 def listar_tipos_habitaciones() -> list:
@@ -123,19 +145,33 @@ def listar_tipos_habitaciones() -> list:
             data = json.load(f)
     except Exception as e:
         return [{"error": f"Error leyendo la base de datos de habitaciones: {str(e)}"}]
-    
+
     tipos = []
     for hab in data["habitaciones"]:
         tipos.append({
             "tipo": hab["tipo"],
             "descripcion": hab["descripcion"],
-            "precio": hab["precio"],
-            "moneda": hab["moneda"]
+            "precio": hab.get("precio", ""),
+            "moneda": hab.get("moneda", ""),
+            "total": hab.get("total", 1)
         })
     return tipos
+@tool
+def listar_reservas() -> list:
+    """
+    Devuelve la lista de todas las reservas hechas en el hotel AselvIA.
+    """
+    if not os.path.exists("reservas.json"):
+        return []
+    try:
+        with open("reservas.json", "r", encoding="utf-8") as f:
+            reservas = json.load(f)
+        return reservas
+    except Exception as e:
+        return [{"error": f"Error leyendo reservas: {str(e)}"}]
 
 # --- Lista de tools para el agente ---
-hotel_tools = [consultar_disponibilidad, listar_tipos_habitaciones, crear_reserva]
+hotel_tools = [consultar_disponibilidad, listar_tipos_habitaciones, crear_reserva, listar_reservas]
 
 # --- Socket.IO ---
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins="*")
@@ -195,6 +231,7 @@ async def user_message(sid, data):
             - Si devuelves tarifas, comunica los precios de forma sencilla: "La tarifa para el {{fecha}} es de X euros".
             - Nunca muestres el JSON directamente, solo usa los datos que contiene.
             - Si falta algún dato necesario para la consulta, pide la información al usuario de forma educada.
+            -Si el usuario pregunta que reservas hay hechas usa la tool de listar reservas y muestra la informacion de forma clara
             - Si vas a realizar una reserva, siempre pide el nombre completo, email y teléfono antes de confirmarla.
             """
         ),
