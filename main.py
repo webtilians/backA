@@ -157,6 +157,7 @@ def listar_tipos_habitaciones() -> list:
             "total": hab.get("total", 1)
         })
     return tipos
+
 @tool
 def listar_reservas() -> list:
     """
@@ -176,9 +177,6 @@ hotel_tools = [consultar_disponibilidad, listar_tipos_habitaciones, crear_reserv
 
 # --- Socket.IO ---
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins="*")
-
-
-
 
 # --- Eventos de Socket.IO ---
 @sio.event
@@ -212,7 +210,7 @@ async def user_message(sid, data):
     prompt = ChatPromptTemplate.from_messages([
         (
             "system",
-            f"""
+            """
             Eres el asistente digital del hotel AselvIA.
             Solo gestionas reservas, tarifas y disponibilidad de este hotel.
             La fecha de hoy es {today}.
