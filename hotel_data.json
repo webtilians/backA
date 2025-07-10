@@ -1,0 +1,26 @@
+{
+  "habitaciones": [
+    {
+      "tipo": "Doble Estándar",
+      "descripcion": "Habitación para dos personas con cama de matrimonio y baño privado.",
+      "precio": 85,
+      "moneda": "EUR",
+      "disponibilidad": [
+        {"fecha": "2024-07-12", "disponibles": 3},
+        {"fecha": "2024-07-13", "disponibles": 2},
+        {"fecha": "2024-07-14", "disponibles": 0}
+      ]
+    },
+    {
+      "tipo": "Suite Junior",
+      "descripcion": "Suite espaciosa con zona de estar, cama king y vistas panorámicas.",
+      "precio": 140,
+      "moneda": "EUR",
+      "disponibilidad": [
+        {"fecha": "2024-07-12", "disponibles": 1},
+        {"fecha": "2024-07-13", "disponibles": 1},
+        {"fecha": "2024-07-14", "disponibles": 1}
+      ]
+    }
+  ]
+}

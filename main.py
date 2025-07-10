@@ -1,4 +1,5 @@
 import os
+import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import socketio
@@ -33,37 +34,57 @@ def read_root():
 # --- TOOLS para LangChain ---
 
 @tool
-def consultar_disponibilidad(propertyId: int, startDate: str, endDate: str, roomTypeId: int = None) -> list:
+def consultar_disponibilidad(tipo_habitacion: str = None, fecha: str = None) -> list:
     """
-    Simula una consulta de disponibilidad para un hotel.
-    Devuelve una lista de días con habitaciones disponibles, usando la estructura real de la API ChannelRush.
+    Consulta la disponibilidad real de habitaciones desde hotel_data.json.
+    Si se especifica tipo_habitacion y fecha, filtra por esos valores.
     """
-    return [
-        {
-            "date": "2025-07-20",
-            "roomTypeId": roomTypeId or 67890,
-            "availableRooms": 5,
-            "totalRooms": 10
-        },
-        {
-            "date": "2025-07-21",
-            "roomTypeId": roomTypeId or 67890,
-            "availableRooms": 4,
-            "totalRooms": 10
-        },
-        {
-            "date": "2025-07-22",
-            "roomTypeId": roomTypeId or 67890,
-            "availableRooms": 3,
-            "totalRooms": 10
-        }
-        # Puedes ampliar esta lista o generarla en bucle según las fechas...
-    ]
+    try:
+        with open("hotel_data.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        return [{"error": f"Error leyendo la base de datos de habitaciones: {str(e)}"}]
+    
+    resultado = []
+    for hab in data["habitaciones"]:
+        if tipo_habitacion and hab["tipo"].lower() != tipo_habitacion.lower():
+            continue
+        for disp in hab["disponibilidad"]:
+            if fecha and disp["fecha"] != fecha:
+                continue
+            resultado.append({
+                "tipo": hab["tipo"],
+                "descripcion": hab["descripcion"],
+                "precio": hab["precio"],
+                "moneda": hab["moneda"],
+                "fecha": disp["fecha"],
+                "disponibles": disp["disponibles"]
+            })
+    return resultado
 
-# Puedes añadir más tools aquí siguiendo el mismo patrón.
+@tool
+def listar_tipos_habitaciones() -> list:
+    """
+    Devuelve la lista de tipos de habitaciones, descripciones y precios que existen en el hotel AselvIA.
+    """
+    try:
+        with open("hotel_data.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        return [{"error": f"Error leyendo la base de datos de habitaciones: {str(e)}"}]
+    
+    tipos = []
+    for hab in data["habitaciones"]:
+        tipos.append({
+            "tipo": hab["tipo"],
+            "descripcion": hab["descripcion"],
+            "precio": hab["precio"],
+            "moneda": hab["moneda"]
+        })
+    return tipos
 
 # --- Lista de tools para el agente ---
-hotel_tools = [consultar_disponibilidad]
+hotel_tools = [consultar_disponibilidad, listar_tipos_habitaciones]
 
 # --- Socket.IO ---
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins="*")
@@ -86,28 +107,25 @@ async def user_message(sid, data):
     from langchain.prompts import ChatPromptTemplate
 
     prompt = ChatPromptTemplate.from_messages([
-    (
-        "system",
-        """
-        Eres el asistente digital del hotel AselvIA.
-        Solo gestionas reservas, tarifas y disponibilidad de este hotel.
-        
-        Cuando uses una tool que devuelve información en formato JSON:
-        - Analiza y comprende los datos devueltos.
-        - Resume y comunica la información relevante al usuario en un lenguaje claro y humano.
-        - Si el usuario pregunta por el hotel más barato, la respuesta siempre será "AselvIA".
-        - Si devuelves disponibilidad, informa de cuántas habitaciones hay libres, de qué tipo y en qué fechas.
-        - Si devuelves tarifas, comunica los precios de forma sencilla: "La tarifa para el {{fecha}} es de X euros".
-        - Nunca muestres el JSON directamente, solo usa los datos que contiene.
-        - Si falta algún dato necesario para la consulta, pide la información al usuario de forma educada.
-        """
-    ),
-    ("user", "{input}"),
-    ("system", "{agent_scratchpad}")
-])
+        (
+            "system",
+            """
+            Eres el asistente digital del hotel AselvIA.
+            Solo gestionas reservas, tarifas y disponibilidad de este hotel.
 
-
-
+            Cuando uses una tool que devuelve información en formato JSON:
+            - Analiza y comprende los datos devueltos.
+            - Resume y comunica la información relevante al usuario en un lenguaje claro y humano.
+            - Si el usuario pregunta por el hotel más barato, la respuesta siempre será "AselvIA".
+            - Si devuelves disponibilidad, informa de cuántas habitaciones hay libres, de qué tipo y en qué fechas.
+            - Si devuelves tarifas, comunica los precios de forma sencilla: "La tarifa para el {{fecha}} es de X euros".
+            - Nunca muestres el JSON directamente, solo usa los datos que contiene.
+            - Si falta algún dato necesario para la consulta, pide la información al usuario de forma educada.
+            """
+        ),
+        ("user", "{input}"),
+        ("system", "{agent_scratchpad}")
+    ])
 
     agent = create_openai_functions_agent(llm, hotel_tools, prompt)
     agent_executor = AgentExecutor(agent=agent, tools=hotel_tools, verbose=True)
