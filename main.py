@@ -11,7 +11,7 @@ from langchain.tools import tool
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import SystemMessage, HumanMessage, AIMessage
 
-from langgraph.prebuilt import create_react_agent  # v0.5.2: SOLO admite (llm, tools)
+from langgraph.prebuilt import create_react_agent  # v0.5.2
 
 # --- CONFIGURACIÓN FastAPI & Socket.IO ---
 app = FastAPI(title="API Aselvia + LangGraph (REACT AGENT)")
@@ -130,7 +130,7 @@ conversaciones = {}  # clave: sid, valor: ConversationBufferMemory
 def get_memory(sid):
     if sid not in conversaciones:
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-        # Importante: prompt inicial como primer mensaje de historial (no como argumento a create_react_agent)
+        # System prompt como primer mensaje del historial
         memory.chat_memory.add_message(SystemMessage(content=
             "Eres el asistente digital del hotel AselvIA. Solo gestionas reservas, tarifas y disponibilidad de este hotel. "
             "Responde siempre en español. Informa al usuario de cada acción que vas a realizar (por ejemplo: 'Consultando disponibilidad...'). "
