@@ -10,13 +10,11 @@ from langchain_openai import ChatOpenAI
 from langchain.tools import tool
 from langchain.schema import HumanMessage, AIMessage
 
-from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import create_react_agent
 from langchain.memory import ConversationBufferMemory
-from langgraph.prebuilt import ChatAgentNode
 
-# --- Configuración y arranque FastAPI/Socket.IO ---
-app = FastAPI(title="API Aselvia + LangGraph")
-
+# --- Configuración FastAPI & Socket.IO ---
+app = FastAPI(title="API Aselvia + LangGraph (REACT AGENT)")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,10 +22,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins="*")
 
-# --- Herramientas/funciones del hotel ---
+# --- Tools del hotel ---
 @tool
 def crear_reserva(nombre: str, tipo_habitacion: str, fecha: str, email: str = "", telefono: str = "", personas: int = 1) -> dict:
     """Crea una reserva y actualiza disponibilidad"""
@@ -127,8 +124,7 @@ def listar_reservas() -> list:
 
 hotel_tools = [consultar_disponibilidad, listar_tipos_habitaciones, crear_reserva, listar_reservas]
 
-# --- Memoria buffer robusta (por sesión/usuario) ---
-# Aquí se podría cambiar por una memoria persistente tipo FileChatMessageHistory fácilmente
+# --- Memoria por sesión ---
 conversaciones = {}  # clave: sid, valor: ConversationBufferMemory
 
 def get_memory(sid):
@@ -136,38 +132,33 @@ def get_memory(sid):
         conversaciones[sid] = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     return conversaciones[sid]
 
-# --- LangGraph: Definición del flujo conversacional ---
-def get_graph(tools, llm):
-    builder = StateGraph()
-    agent_node = ChatAgentNode(
-        llm,
-        system_prompt=(
-            "Eres el asistente digital del hotel AselvIA.\n"
-            "Gestionas reservas, tarifas y disponibilidad SOLO de este hotel.\n"
-            "La fecha de hoy es {today}.\n"
-            "Cuando uses una herramienta, indícalo antes al usuario (por ejemplo: 'Consultando disponibilidad...').\n"
-            "Nunca muestres el JSON, solo resume la información.\n"
-            "Si falta información para una reserva, pide nombre completo, email y teléfono.\n"
-            "Cuando devuelvas tarifas, usa: 'La tarifa para el {{fecha}} es de X euros'."
-        ),
-        tools=tools,
-        memory_key="chat_history",
-        input_key="input"
-    )
-    builder.add_node("agent", agent_node)
-    builder.set_entry_point("agent")
-    builder.add_edge("agent", END)
-    return builder.compile()
+# --- Prompt del agente ---
+PROMPT = (
+    "Eres el asistente digital del hotel AselvIA.\n"
+    "Gestionas reservas, tarifas y disponibilidad SOLO de este hotel.\n"
+    "La fecha de hoy es {today}.\n"
+    "Cuando uses una herramienta, indícalo antes al usuario (por ejemplo: 'Consultando disponibilidad...').\n"
+    "Nunca muestres el JSON, solo resume la información.\n"
+    "Si falta información para una reserva, pide nombre completo, email y teléfono.\n"
+    "Cuando devuelvas tarifas, usa: 'La tarifa para el {{fecha}} es de X euros'."
+)
 
+# --- Inicialización del agente LangGraph REACT ---
 llm = ChatOpenAI(model="gpt-4-turbo", temperature=0, streaming=True)
-graph = get_graph(hotel_tools, llm)
+graph = create_react_agent(
+    llm=llm,
+    tools=hotel_tools,
+    prompt=PROMPT,
+    memory_key="chat_history",
+    input_key="input"
+)
 
 # --- FastAPI endpoint (opcional) ---
 @app.get("/")
 def read_root():
-    return {"message": "API LangGraph AselvIA funcionando"}
+    return {"message": "API LangGraph AselvIA funcionando (REACT AGENT)"}
 
-# --- Socket.IO: eventos asíncronos ---
+# --- Socket.IO eventos asíncronos ---
 @sio.event
 async def connect(sid, environ):
     print(f"Cliente conectado: {sid}")
@@ -182,23 +173,20 @@ async def disconnect(sid):
 async def user_message(sid, data):
     # data = { "mensaje": str, "historial": [{sender, text}] }
     user_input = data.get("mensaje") if isinstance(data, dict) else data
-    # Obtener memoria para el usuario
     memory = get_memory(sid)
     today = datetime.date.today().strftime("%Y-%m-%d")
-    # Añadir mensaje humano al historial
     memory.chat_memory.add_user_message(user_input)
-    # --- Run LangGraph: streaming de pasos, tools y respuesta ---
+    # Ejecuta el REACT agent en modo streaming
     async for step in graph.astream(
         {"input": user_input, "chat_history": memory.chat_memory.messages, "today": today}
     ):
-        # Si se va a usar una tool, avisa al front (ejemplo profesional)
-        # En la versión actual, el paso de tool puede estar en "agent_action"
+        # Cuando va a ejecutar una tool, avisa al front
         if "agent_action" in step:
             await sio.emit("tool-used", {
                 "tool": step["agent_action"].tool,
                 "input": step["agent_action"].tool_input,
             }, to=sid)
-        # Si hay respuesta final, mándala y termina
+        # Cuando hay respuesta final, mándala y termina
         if "output" in step:
             final_msg = step["output"]
             memory.chat_memory.add_ai_message(final_msg)
