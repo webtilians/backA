@@ -113,7 +113,7 @@ def crear_reserva(
 ) -> Dict:
     """Crea una reserva y actualiza disponibilidad"""
     try:
-        logger.info(f"Creando reserva para {nombre}, habitación {tipo_habitacion}, fecha {fecha}")
+        logger.info(f"🎫 HERRAMIENTA crear_reserva INICIADA: {nombre}, {tipo_habitacion}, {fecha}")
         
         reservas = cargar_reservas()
         data = cargar_hotel_data()
@@ -126,6 +126,7 @@ def crear_reserva(
                 break
         
         if total is None:
+            logger.warning(f"⚠️ Tipo de habitación no reconocido: {tipo_habitacion}")
             return {
                 "ok": False, 
                 "mensaje": f"No se reconoce el tipo de habitación '{tipo_habitacion}'."
@@ -138,7 +139,10 @@ def crear_reserva(
             and r["fecha"] == fecha
         )
         
+        logger.info(f"📊 Disponibilidad: {total} total, {reservas_count} reservadas, {total - reservas_count} disponibles")
+        
         if total - reservas_count <= 0:
+            logger.warning(f"❌ Sin habitaciones disponibles para {tipo_habitacion} en {fecha}")
             return {
                 "ok": False, 
                 "mensaje": f"No quedan habitaciones '{tipo_habitacion}' para la fecha {fecha}."
@@ -159,20 +163,21 @@ def crear_reserva(
         reservas.append(reserva)
         
         if guardar_reservas(reservas):
-            logger.info(f"Reserva creada exitosamente: {reserva['id']}")
+            logger.info(f"✅ RESERVA CREADA EXITOSAMENTE: {reserva['id']} para {nombre}")
             return {
                 "ok": True, 
                 "mensaje": "Reserva realizada correctamente", 
                 "reserva": reserva
             }
         else:
+            logger.error(f"❌ Error guardando reserva para {nombre}")
             return {
                 "ok": False, 
                 "mensaje": "Error al guardar la reserva"
             }
             
     except Exception as e:
-        logger.error(f"Error creando reserva: {str(e)}")
+        logger.error(f"❌ ERROR CRÍTICO en crear_reserva: {str(e)}")
         return {
             "ok": False, 
             "mensaje": f"Error al crear reserva: {str(e)}"
@@ -182,7 +187,7 @@ def crear_reserva(
 def consultar_disponibilidad(tipo_habitacion: str, fecha: str) -> Dict:
     """Devuelve habitaciones libres para una fecha y tipo"""
     try:
-        logger.info(f"Consultando disponibilidad para {tipo_habitacion} en {fecha}")
+        logger.info(f"🔍 HERRAMIENTA consultar_disponibilidad INICIADA: {tipo_habitacion} en {fecha}")
         
         data = cargar_hotel_data()
         
@@ -197,6 +202,7 @@ def consultar_disponibilidad(tipo_habitacion: str, fecha: str) -> Dict:
                 break
         
         if total is None:
+            logger.warning(f"⚠️ Tipo de habitación no encontrado: {tipo_habitacion}")
             return {
                 "ok": False, 
                 "mensaje": f"No se reconoce el tipo de habitación '{tipo_habitacion}'."
@@ -212,6 +218,8 @@ def consultar_disponibilidad(tipo_habitacion: str, fecha: str) -> Dict:
         
         disponibles = total - reservas_count
         
+        logger.info(f"📊 RESULTADO: {disponibles} de {total} habitaciones {tipo_habitacion} disponibles para {fecha}")
+        
         return {
             "ok": True,
             "tipo": tipo_habitacion,
@@ -225,7 +233,7 @@ def consultar_disponibilidad(tipo_habitacion: str, fecha: str) -> Dict:
         }
         
     except Exception as e:
-        logger.error(f"Error consultando disponibilidad: {str(e)}")
+        logger.error(f"❌ ERROR en consultar_disponibilidad: {str(e)}")
         return {
             "ok": False, 
             "mensaje": f"Error consultando disponibilidad: {str(e)}"
@@ -235,7 +243,7 @@ def consultar_disponibilidad(tipo_habitacion: str, fecha: str) -> Dict:
 def listar_tipos_habitaciones() -> List[Dict]:
     """Devuelve la lista de tipos de habitaciones"""
     try:
-        logger.info("Listando tipos de habitaciones")
+        logger.info("📋 HERRAMIENTA listar_tipos_habitaciones INICIADA")
         
         data = cargar_hotel_data()
         tipos = []
@@ -249,22 +257,24 @@ def listar_tipos_habitaciones() -> List[Dict]:
                 "total": hab.get("total", 1)
             })
         
+        logger.info(f"✅ TIPOS LISTADOS: {len(tipos)} tipos de habitaciones encontrados")
         return tipos
         
     except Exception as e:
-        logger.error(f"Error listando tipos de habitaciones: {str(e)}")
+        logger.error(f"❌ ERROR en listar_tipos_habitaciones: {str(e)}")
         return [{"error": f"Error leyendo la base de datos: {str(e)}"}]
 
 @tool
 def listar_reservas() -> List[Dict]:
     """Devuelve la lista de todas las reservas hechas en el hotel AselvIA"""
     try:
-        logger.info("Listando todas las reservas")
+        logger.info("📝 HERRAMIENTA listar_reservas INICIADA")
         reservas = cargar_reservas()
+        logger.info(f"✅ RESERVAS LISTADAS: {len(reservas)} reservas encontradas")
         return reservas
         
     except Exception as e:
-        logger.error(f"Error listando reservas: {str(e)}")
+        logger.error(f"❌ ERROR en listar_reservas: {str(e)}")
         return [{"error": f"Error leyendo reservas: {str(e)}"}]
 
 # Lista de herramientas disponibles
@@ -306,36 +316,151 @@ def inicializar_agente():
             api_key=openai_api_key
         )
         
-        # Crear un agente simple personalizado
-        class SimpleHotelAgent:
+        # Crear un agente inteligente que usa herramientas y reporta su uso
+        class IntelligentHotelAgent:
             def __init__(self, llm, tools):
                 self.llm = llm
                 self.tools = {tool.name: tool for tool in tools}
+                self.current_tool = None
+                self.sid = None
                 
-            def run(self, input_text):
+            def set_session(self, sid):
+                """Establece la sesión actual para reportar herramientas"""
+                self.sid = sid
+                
+            async def emit_tool_usage(self, tool_name, input_data=None):
+                """Emite evento de uso de herramienta al frontend y logs del backend"""
+                logger.info(f"🔧 HERRAMIENTA USADA: {tool_name} | Entrada: {input_data}")
+                if self.sid:
+                    await sio.emit("tool-used", {
+                        "tool": tool_name,
+                        "input": input_data
+                    }, to=self.sid)
+                
+            async def emit_tool_finished(self):
+                """Emite evento de herramienta terminada"""
+                logger.info(f"✅ HERRAMIENTA TERMINADA")
+                if self.sid:
+                    await sio.emit("tool-used", {"tool": None}, to=self.sid)
+                
+            async def run(self, input_text, chat_history=None):
                 try:
-                    # Analizar la consulta y determinar qué herramienta usar
-                    if "disponibilidad" in input_text.lower() or "disponible" in input_text.lower():
-                        return self._handle_availability_query(input_text)
-                    elif "reserva" in input_text.lower() and ("crear" in input_text.lower() or "hacer" in input_text.lower()):
-                        return self._handle_reservation_request(input_text)
-                    elif "tipos" in input_text.lower() or "habitaciones" in input_text.lower() or "precios" in input_text.lower():
-                        return self._handle_room_types_query()
-                    elif "lista" in input_text.lower() and "reservas" in input_text.lower():
-                        return self._handle_list_reservations()
+                    logger.info(f"🤖 PROCESANDO: {input_text}")
+                    
+                    # Usar GPT-4 para determinar la intención del usuario con contexto del historial
+                    intent_result = await self._analyze_intent(input_text, chat_history)
+                    
+                    logger.info(f"🧠 INTENCIÓN DETECTADA: {intent_result.get('action', 'general')}")
+                    
+                    if intent_result["action"] == "consultar_disponibilidad_especifica":
+                        return await self._handle_specific_availability(intent_result)
+                    elif intent_result["action"] == "consultar_disponibilidad_general":
+                        return await self._handle_general_availability()
+                    elif intent_result["action"] == "crear_reserva":
+                        return await self._handle_reservation_request(intent_result, input_text, chat_history)
+                    elif intent_result["action"] == "listar_tipos":
+                        return await self._handle_room_types_query()
+                    elif intent_result["action"] == "listar_reservas":
+                        return await self._handle_list_reservations()
                     else:
-                        return self._handle_general_query(input_text)
+                        return await self._handle_general_query(input_text, chat_history)
                     
                 except Exception as e:
-                    logger.error(f"Error en SimpleHotelAgent: {str(e)}")
+                    logger.error(f"❌ ERROR en IntelligentHotelAgent: {str(e)}")
                     return "Lo siento, ocurrió un error al procesar tu solicitud."
             
-            def _handle_availability_query(self, input_text):
-                # Ejecutar listar_tipos_habitaciones para mostrar opciones
+
+                prompt = f"""
+Analiza el siguiente mensaje del usuario considerando el contexto de la conversación:
+
+{context}
+Mensaje actual: "{input_text}"
+
+Responde SOLO con un JSON válido que contenga:
+  * "listar_tipos" - si pregunta por tipos de habitaciones o precios
+  * "listar_reservas" - si quiere ver reservas existentes
+  * "general" - para cualquier otra consulta
+- "tipo_habitacion": extraer si menciona "doble", "suite", etc. (null si no especifica)
+            async def _handle_general_query(self, input_text, chat_history=None):
+                # Maneja consultas generales SOLO usando datos reales y herramientas, nunca inventa.
+                logger.info("🔍 _handle_general_query: forzando uso de herramientas reales")
+                # Siempre mostrar catálogo real
+                await self.emit_tool_usage("listar_tipos_habitaciones")
                 tipos_result = self.tools["listar_tipos_habitaciones"].func()
+                await self.emit_tool_finished()
+                response = "🏨 **Catálogo de Habitaciones - Hotel AselvIA**\n\n"
+                for hab in tipos_result:
+                    if "error" not in hab:
+                        response += f"🛏️ {hab['tipo']}\n📝 {hab['descripcion']}\n💰 {hab['precio']} {hab['moneda']} por noche\n🏠 Habitaciones totales: {hab['total']}\n\n"
+                response += f"¿Te gustaría consultar disponibilidad para alguna fecha o tipo de habitación? Si quieres reservar, dime los datos y lo gestiono."
+                return response
                 
-                response = "🏨 **Disponibilidad en Hotel AselvIA**\n\n"
-                response += "Estos son nuestros tipos de habitaciones disponibles:\n\n"
+                try:
+                    response = self.llm.invoke(prompt)
+                    import json
+                    result = json.loads(response.content.strip())
+                    logger.info(f"🧠 ANÁLISIS: {result}")
+                    return result
+                except Exception as e:
+                    logger.error(f"❌ Error analizando intención: {str(e)}")
+                    return {"action": "general"}
+            
+            async def _handle_specific_availability(self, intent_result):
+                tipo = intent_result.get("tipo_habitacion")
+                fecha = intent_result.get("fecha")
+                
+                if not tipo:
+                    # Si no especifica tipo, mostrar opciones
+                    await self.emit_tool_usage("listar_tipos_habitaciones")
+                    tipos_result = self.tools["listar_tipos_habitaciones"].func()
+                    await self.emit_tool_finished()
+                    
+                    response = "🏨 **Tipos de habitaciones disponibles:**\n\n"
+                    for hab in tipos_result:
+                        if "error" not in hab:
+                            response += f"🛏️ **{hab['tipo']}** - {hab['precio']} {hab['moneda']}/noche\n"
+                            response += f"   📝 {hab['descripcion']}\n\n"
+                    
+                    response += "Por favor, especifica qué tipo de habitación te interesa y para qué fecha."
+                    return response
+                
+                if not fecha:
+                    response = f"Para consultar disponibilidad de **{tipo}**, por favor especifica para qué fecha necesitas la habitación."
+                    return response
+                
+                # Consultar disponibilidad específica
+                await self.emit_tool_usage("consultar_disponibilidad", {
+                    "tipo_habitacion": tipo,
+                    "fecha": fecha
+                })
+                
+                result = self.tools["consultar_disponibilidad"].func(tipo, fecha)
+                await self.emit_tool_finished()
+                
+                if result.get("ok"):
+                    if result["disponibles"] > 0:
+                        response = f"✅ **Disponibilidad confirmada**\n\n"
+                        response += f"🛏️ **{result['tipo']}**\n"
+                        response += f"📅 Fecha: {result['fecha']}\n"
+                        response += f"💰 Precio: {result['precio']} {result['moneda']} por noche\n"
+                        response += f"🏠 Habitaciones disponibles: **{result['disponibles']}** de {result['total']}\n\n"
+                        response += f"📝 {result['descripcion']}\n\n"
+                        response += "¿Te gustaría hacer una reserva?"
+                    else:
+                        response = f"❌ **No hay disponibilidad**\n\n"
+                        response += f"Lo siento, no quedan habitaciones **{result['tipo']}** disponibles para el {result['fecha']}.\n\n"
+                        response += "¿Te interesa consultar otros tipos de habitaciones o fechas?"
+                else:
+                    response = f"❌ {result.get('mensaje', 'Error consultando disponibilidad')}"
+                
+                return response
+            
+            async def _handle_general_availability(self):
+                await self.emit_tool_usage("listar_tipos_habitaciones")
+                tipos_result = self.tools["listar_tipos_habitaciones"].func()
+                await self.emit_tool_finished()
+                
+                response = "🏨 **Disponibilidad General - Hotel AselvIA**\n\n"
                 
                 for hab in tipos_result:
                     if "error" not in hab:
@@ -344,16 +469,18 @@ def inicializar_agente():
                         response += f"   💰 {hab['precio']} {hab['moneda']} por noche\n"
                         response += f"   🏠 Total disponibles: {hab['total']}\n\n"
                 
-                response += "Para consultar disponibilidad específica, por favor indícame:\n"
+                response += "Para consultar disponibilidad específica, indícame:\n"
                 response += "- ¿Qué tipo de habitación te interesa?\n"
-                response += "- ¿Para qué fecha?\n"
+                response += "- ¿Para qué fecha?"
                 
                 return response
             
-            def _handle_room_types_query(self):
+            async def _handle_room_types_query(self):
+                await self.emit_tool_usage("listar_tipos_habitaciones")
                 tipos_result = self.tools["listar_tipos_habitaciones"].func()
+                await self.emit_tool_finished()
                 
-                response = "🏨 **Tipos de Habitaciones - Hotel AselvIA**\n\n"
+                response = "🏨 **Catálogo de Habitaciones - Hotel AselvIA**\n\n"
                 
                 for hab in tipos_result:
                     if "error" not in hab:
@@ -364,8 +491,10 @@ def inicializar_agente():
                 
                 return response
             
-            def _handle_list_reservations(self):
+            async def _handle_list_reservations(self):
+                await self.emit_tool_usage("listar_reservas")
                 reservas_result = self.tools["listar_reservas"].func()
+                await self.emit_tool_finished()
                 
                 if not reservas_result:
                     return "📋 No hay reservas registradas en el hotel en este momento."
@@ -386,36 +515,195 @@ def inicializar_agente():
                         response += "\n"
                 
                 return response
+            async def _handle_reservation_request(self, intent_result, input_text, chat_history=None):
+                logger.info(f"🎫 PROCESANDO RESERVA: {intent_result}")
+                import re
+                # Extraer datos de reserva del intent o del historial
+                datos_reserva = intent_result.get("datos_reserva", {})
+                if not datos_reserva:
+                    datos_reserva = {}
+                tipo_habitacion = intent_result.get("tipo_habitacion")
+                fecha = intent_result.get("fecha")
+                # Buscar datos adicionales en el historial de conversación
+                if chat_history:
+                    for msg in chat_history[-10:]:
+                        if hasattr(msg, 'content') and isinstance(msg, HumanMessage):
+                            content = msg.content.lower()
+                            # Extraer nombre
+                            if not datos_reserva.get("nombre"):
+                                name_patterns = [
+                                    r"mi nombre es ([a-záéíóúñü\s]+)",
+                                    r"me llamo ([a-záéíóúñü\s]+)",
+                                    r"soy ([a-záéíóúñü\s]+)"
+                                ]
+                                for pattern in name_patterns:
+                                    match = re.search(pattern, content)
+                                    if match:
+                                        datos_reserva["nombre"] = match.group(1).strip().title()
+                                        break
+                            # Extraer email
+                            if not datos_reserva.get("email"):
+                                email_match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', msg.content)
+                                if email_match:
+                                    datos_reserva["email"] = email_match.group()
+                            # Extraer teléfono
+                            if not datos_reserva.get("telefono"):
+                                tel_match = re.search(r'\b\d{9,}\b', msg.content)
+                                if tel_match:
+                                    datos_reserva["telefono"] = tel_match.group()
+                            # Extraer tipo de habitación
+                            if not tipo_habitacion:
+                                if "doble" in content and "estándar" in content:
+                                    tipo_habitacion = "Doble Estándar"
+                                elif "suite" in content:
+                                    tipo_habitacion = "Suite Junior"
+                            # Extraer fecha
+                            if not fecha:
+                                date_patterns = [
+                                    r"(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)",
+                                    r"(\d{4}-\d{2}-\d{2})",
+                                    r"(\d{1,2}/\d{1,2}/\d{4})"
+                                ]
+                                for pattern in date_patterns:
+                                    match = re.search(pattern, content)
+                                    if match:
+                                        fecha = self._parse_date(match.group())
+                                        break
+                logger.info(f"📋 DATOS RECOPILADOS: nombre={datos_reserva.get('nombre')}, tipo={tipo_habitacion}, fecha={fecha}, email={datos_reserva.get('email')}, tel={datos_reserva.get('telefono')}")
+                # Verificar qué datos faltan
+                required_fields = {
+                    "nombre": datos_reserva.get("nombre"),
+                    "tipo_habitacion": tipo_habitacion,
+                    "fecha": fecha,
+                    "email": datos_reserva.get("email"),
+                    "telefono": datos_reserva.get("telefono")
+                }
+                missing_fields = [field for field, value in required_fields.items() if not value]
+                if missing_fields:
+                    response = "🎫 **Crear Nueva Reserva**\n\n"
+                    response += "Para completar tu reserva necesito los siguientes datos:\n\n"
+                    if "nombre" in missing_fields:
+                        response += "- 👤 **Nombre completo**\n"
+                    if "tipo_habitacion" in missing_fields:
+                        response += "- 🛏️ **Tipo de habitación** (Doble Estándar o Suite Junior)\n"
+                    if "fecha" in missing_fields:
+                        response += "- 📅 **Fecha de la reserva**\n"
+                    if "email" in missing_fields:
+                        response += "- 📧 **Email de contacto**\n"
+                    if "telefono" in missing_fields:
+                        response += "- 📞 **Teléfono**\n"
+                    response += "\nPor favor proporciona la información que falta."
+                    logger.info(f"❗ Faltan datos para reserva: {missing_fields}")
+                    return response
+                # Crear la reserva
+                personas = datos_reserva.get("personas", 1)
+                await self.emit_tool_usage("crear_reserva", {
+                    "nombre": datos_reserva["nombre"],
+                    "tipo_habitacion": tipo_habitacion,
+                    "fecha": fecha,
+                    "email": datos_reserva["email"],
+                    "telefono": datos_reserva["telefono"],
+                    "personas": personas
+                })
+                result = self.tools["crear_reserva"].func(
+                    nombre=datos_reserva["nombre"],
+                    tipo_habitacion=tipo_habitacion,
+                    fecha=fecha,
+                    email=datos_reserva["email"],
+                    telefono=datos_reserva["telefono"],
+                    personas=personas
+                )
+                await self.emit_tool_finished()
+                logger.info(f"Resultado crear_reserva: {result}")
+                if result.get("ok"):
+                    reserva = result.get("reserva", {})
+                    response = f"✅ **¡Reserva Confirmada!**\n\n"
+                    response += f"🎫 **ID de Reserva:** {reserva.get('id')}\n"
+                    response += f"👤 **Cliente:** {reserva.get('nombre')}\n"
+                    response += f"🛏️ **Habitación:** {reserva.get('tipo_habitacion')}\n"
+                    response += f"📅 **Fecha:** {reserva.get('fecha')}\n"
+                    response += f"👥 **Personas:** {reserva.get('personas')}\n"
+                    response += f"📧 **Email:** {reserva.get('email')}\n"
+                    response += f"📞 **Teléfono:** {reserva.get('telefono')}\n\n"
+                    response += "🎉 **¡Tu reserva ha sido procesada exitosamente!**\n"
+                    response += "Recibirás un email de confirmación en breve."
+                else:
+                    response = f"❌ **Error al crear reserva**\n\n{result.get('mensaje', 'Error desconocido')}"
+                return response
             
-            def _handle_reservation_request(self, input_text):
-                return ("Para crear una reserva necesito la siguiente información:\n\n"
-                       "🎫 **Datos requeridos:**\n"
-                       "- 👤 Nombre completo\n"
-                       "- 🛏️ Tipo de habitación (Doble Estándar o Suite Junior)\n"
-                       "- 📅 Fecha de la reserva\n"
-                       "- 📧 Email de contacto\n"
-                       "- 📞 Teléfono\n"
-                       "- 👥 Número de personas\n\n"
-                       "Por favor proporciona estos datos y procederé a crear tu reserva.")
+            def _parse_date(self, date_str):
+                """Convierte diferentes formatos de fecha a YYYY-MM-DD"""
+                try:
+                    import re
+                    from datetime import datetime
+                    
+                    # Mapeo de meses en español
+                    meses = {
+                        "enero": "01", "febrero": "02", "marzo": "03", "abril": "04",
+                        "mayo": "05", "junio": "06", "julio": "07", "agosto": "08",
+                        "septiembre": "09", "octubre": "10", "noviembre": "11", "diciembre": "12"
+                    }
+                    
+                    # Formato: "25 de julio"
+                    match = re.search(r"(\d{1,2})\s+de\s+(\w+)", date_str.lower())
+                    if match:
+                        day = match.group(1).zfill(2)
+                        month_name = match.group(2)
+                        if month_name in meses:
+                            return f"2025-{meses[month_name]}-{day}"
+                    
+                    # Formato: "2025-07-25"
+                    if re.match(r"\d{4}-\d{2}-\d{2}", date_str):
+                        return date_str
+                    
+                    # Formato: "25/07/2025"
+                    match = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", date_str)
+                    if match:
+                        day, month, year = match.groups()
+                        return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                    
+                    return date_str
+                except:
+                    return date_str
             
-            def _handle_general_query(self, input_text):
-                prompt = f"""
-Eres el asistente digital del hotel AselvIA. El usuario te pregunta: {input_text}
+            async def _handle_general_query(self, input_text, chat_history=None):
+                """Maneja consultas generales usando el historial de conversación"""
+                
+                # Construir contexto del historial
+                if chat_history:
+                    recent_messages = []
+                    for msg in chat_history[-6:]:  # Últimos 6 mensajes para contexto
+                        if hasattr(msg, 'content'):
+                            if isinstance(msg, HumanMessage):
+                                recent_messages.append(f"Usuario: {msg.content}")
+                            elif isinstance(msg, AIMessage):
+                                recent_messages.append(f"Asistente: {msg.content}")
+                                    recent_messages.append(f"Asistente: {msg.content}")
+                    
+                    if recent_messages:
+                        context = f"\nHistorial de conversación:\n" + "\n".join(recent_messages[-4:]) + "\n"
 
-Responde de manera amigable y profesional en español. Ofrece ayuda con:
+
+Responde de manera amigable y profesional en español, considerando el contexto de la conversación. 
+Puedes ayudar con:
 - Consultar disponibilidad de habitaciones
-- Ver tipos de habitaciones y precios
+- Ver tipos de habitaciones y precios  
 - Crear reservas
 - Listar reservas existentes
 
 Si la consulta no está relacionada con el hotel, recuerda amablemente que solo puedes ayudar con temas del hotel AselvIA.
+Si parece que el usuario quiere continuar con una reserva mencionada anteriormente, guíalo para completar los datos necesarios.
 """
                 
-                response = self.llm.invoke(prompt)
-                return response.content
+                try:
+                    response = self.llm.invoke(prompt)
+                    return response.content
+                except Exception as e:
+                    logger.error(f"❌ Error en consulta general: {str(e)}")
+                    return "Lo siento, ocurrió un error. ¿Podrías reformular tu pregunta?"
         
-        agent = SimpleHotelAgent(llm, hotel_tools)
-        logger.info("Agente simple inicializado correctamente")
+        agent = IntelligentHotelAgent(llm, hotel_tools)
+        logger.info("Agente inteligente inicializado correctamente")
         return agent
         
     except Exception as e:
@@ -470,18 +758,20 @@ def get_reservas():
 @sio.event
 async def connect(sid, environ):
     """Evento de conexión de cliente"""
-    logger.info(f"Cliente conectado: {sid}")
+    logger.info(f"🔌 CLIENTE CONECTADO: {sid}")
     await sio.emit("connection_status", {"status": "connected", "sid": sid}, to=sid)
 
 @sio.event
 async def disconnect(sid):
     """Evento de desconexión de cliente"""
-    logger.info(f"Cliente desconectado: {sid}")
+    logger.info(f"🔌 CLIENTE DESCONECTADO: {sid}")
     
     # Limpiar memoria de la sesión
     if sid in conversaciones:
         del conversaciones[sid]
-        logger.info(f"Memoria limpiada para sesión: {sid}")
+        logger.info(f"🧹 Memoria limpiada para sesión: {sid}")
+    else:
+        logger.info(f"⚠️ No había memoria para la sesión: {sid}")
 
 @sio.event
 async def user_message(sid, data):
@@ -494,17 +784,20 @@ async def user_message(sid, data):
             await sio.emit("bot-message", "Por favor, envía un mensaje válido.", to=sid)
             return
         
-        logger.info(f"Mensaje recibido de {sid}: {user_input}")
+        logger.info(f"📨 Mensaje recibido de {sid}: '{user_input}'")
         
         # Verificar que el agente esté disponible
         if agent is None:
             error_msg = "Lo siento, el asistente no está disponible en este momento. Por favor, verifica la configuración de OpenAI."
+            logger.error(f"❌ Agente no disponible para {sid}")
             await sio.emit("bot-message", error_msg, to=sid)
             return
         
         # Obtener memoria de la conversación
         memory = get_memory(sid)
         today = datetime.date.today().strftime("%Y-%m-%d")
+        
+        logger.info(f"💭 Memoria cargada para {sid}, mensajes en historial: {len(memory.chat_memory.messages)}")
         
         # Añadir mensaje del usuario a la memoria
         memory.chat_memory.add_user_message(user_input)
@@ -520,37 +813,31 @@ async def user_message(sid, data):
             )
             chat_history = [system_msg] + chat_history
         
+        # Configurar la sesión del agente para reportar herramientas
+        agent.set_session(sid)
+        
         # Enviar mensaje de "escribiendo..."
         await sio.emit("bot-typing", {"typing": True}, to=sid)
         
-        # Preparar el input para el agente
-        input_text = f"""
-Fecha actual: {today}
-
-Historial de conversación:
-{chr(10).join([f"Usuario: {msg.content}" if hasattr(msg, 'content') and msg.type == 'human' else f"Asistente: {msg.content}" if hasattr(msg, 'content') and msg.type == 'ai' else "" for msg in chat_history[-6:] if hasattr(msg, 'content')])}
-
-Consulta actual del usuario: {user_input}
-
-Eres el asistente digital del hotel AselvIA. Responde en español de manera amigable y profesional.
-"""
+        logger.info(f"⚡ Invocando agente para {sid}...")
         
-        # Invocar el agente
+        # Invocar el agente asíncrono con historial
         try:
-            result = agent.run(input_text)
-            final_msg = result if isinstance(result, str) else str(result)
+            final_msg = await agent.run(user_input, chat_history)
         except Exception as e:
-            logger.error(f"Error ejecutando agente: {str(e)}")
+            logger.error(f"❌ Error ejecutando agente: {str(e)}")
             final_msg = "Lo siento, ocurrió un error al procesar tu solicitud. ¿Podrías reformular tu pregunta?"
         
         # Añadir respuesta del bot a la memoria
         memory.chat_memory.add_ai_message(final_msg)
         
+        logger.info(f"🤖 Respuesta generada para {sid}: '{final_msg[:100]}...'")
+        
         # Enviar respuesta al cliente
         await sio.emit("bot-typing", {"typing": False}, to=sid)
         await sio.emit("bot-message", final_msg, to=sid)
         
-        logger.info(f"Respuesta enviada a {sid}")
+        logger.info(f"✅ Respuesta enviada a {sid}, memoria actualizada con {len(memory.chat_memory.messages)} mensajes")
         
     except Exception as e:
         logger.error(f"Error procesando mensaje de {sid}: {str(e)}")
