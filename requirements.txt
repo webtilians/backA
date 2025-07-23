@@ -6,12 +6,17 @@ uvicorn==0.29.0
 python-socketio==5.11.2
 python-engineio==4.9.1
 
-# LangChain
-langgraph>=0.5.2
-langchain>=0.1.17
-langchain-openai>=0.1.8
+# LangChain - Versiones estables y compatibles
+langchain==0.2.16
+langchain-openai==0.1.23
+langchain-community==0.2.16
+langgraph==0.2.10
 
-python-dotenv
+# Variables de entorno
+python-dotenv==1.0.1
 
-# Es necesario para que FastAPI maneje el CORS correctamente
-python-multipart
+# Para manejar CORS y multipart
+python-multipart==0.0.9
+
+# Logging mejorado
+colorlog==6.8.2

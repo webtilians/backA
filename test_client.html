@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Cliente - Hotel AselvIA</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .chat-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #fafafa;
+            border-radius: 5px;
+        }
+        
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .user-message {
+            background-color: #007bff;
+            color: white;
+            text-align: right;
+            margin-left: 50px;
+        }
+        
+        .bot-message {
+            background-color: #e9ecef;
+            color: #333;
+            margin-right: 50px;
+        }
+        
+        .typing {
+            color: #666;
+            font-style: italic;
+        }
+        
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        
+        #messageInput {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        #sendButton {
+            padding: 12px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        #sendButton:hover {
+            background-color: #0056b3;
+        }
+        
+        .status {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h1>🏨 Test Cliente - Hotel AselvIA</h1>
+        
+        <div id="status" class="status disconnected">
+            Desconectado
+        </div>
+        
+        <div id="messages" class="messages">
+            <div class="message bot-message">
+                ¡Hola! Soy el asistente digital del Hotel AselvIA. ¿En qué puedo ayudarte hoy?
+            </div>
+        </div>
+        
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="Escribe tu mensaje aquí..." />
+            <button id="sendButton">Enviar</button>
+        </div>
+        
+        <div style="margin-top: 20px; font-size: 14px; color: #666;">
+            <strong>Ejemplos de consultas:</strong><br>
+            • "¿Qué tipos de habitaciones tienen?"<br>
+            • "¿Hay disponibilidad para el 25 de julio?"<br>
+            • "Quiero hacer una reserva"<br>
+            • "Muestra las reservas actuales"
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const statusDiv = document.getElementById('status');
+
+        // Estado de conexión
+        socket.on('connect', () => {
+            console.log('Conectado al servidor');
+            statusDiv.textContent = 'Conectado ✅';
+            statusDiv.className = 'status connected';
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Desconectado del servidor');
+            statusDiv.textContent = 'Desconectado ❌';
+            statusDiv.className = 'status disconnected';
+        });
+
+        // Mensajes del bot
+        socket.on('bot-message', (message) => {
+            addMessage(message, 'bot-message');
+            removeTyping();
+        });
+
+        // Indicador de "escribiendo"
+        socket.on('bot-typing', (data) => {
+            if (data.typing) {
+                addTyping();
+            } else {
+                removeTyping();
+            }
+        });
+
+        // Estado de conexión
+        socket.on('connection_status', (data) => {
+            console.log('Estado de conexión:', data);
+        });
+
+        // Funciones auxiliares
+        function addMessage(message, className) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${className}`;
+            messageDiv.innerHTML = message.replace(/\n/g, '<br>');
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addTyping() {
+            removeTyping(); // Evitar duplicados
+            const typingDiv = document.createElement('div');
+            typingDiv.id = 'typing-indicator';
+            typingDiv.className = 'message bot-message typing';
+            typingDiv.textContent = 'El asistente está escribiendo...';
+            messagesDiv.appendChild(typingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function removeTyping() {
+            const typingDiv = document.getElementById('typing-indicator');
+            if (typingDiv) {
+                typingDiv.remove();
+            }
+        }
+
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                addMessage(message, 'user-message');
+                socket.emit('user_message', { mensaje: message });
+                messageInput.value = '';
+            }
+        }
+
+        // Event listeners
+        sendButton.addEventListener('click', sendMessage);
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Focus en el input al cargar
+        messageInput.focus();
+    </script>
+</body>
+</html>
