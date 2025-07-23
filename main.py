@@ -369,6 +369,25 @@ def inicializar_agente():
                     logger.error(f"❌ ERROR en IntelligentHotelAgent: {str(e)}")
                     return "Lo siento, ocurrió un error al procesar tu solicitud."
             
+            async def _analyze_intent(self, input_text, chat_history=None):
+                # Construir contexto del historial
+                context = ""
+                if chat_history:
+                    recent_messages = []
+                    for msg in chat_history[-6:]:  # Últimos 6 mensajes para contexto
+                        if hasattr(msg, 'content'):
+                            if isinstance(msg, HumanMessage):
+                                recent_messages.append(f"Usuario: {msg.content}")
+                            elif isinstance(msg, AIMessage):
+                                recent_messages.append(f"Asistente: {msg.content}")
+                            elif hasattr(msg, 'type'):
+                                if msg.type == 'human':
+                                    recent_messages.append(f"Usuario: {msg.content}")
+                                elif msg.type == 'ai':
+                                    recent_messages.append(f"Asistente: {msg.content}")
+                    
+                    if recent_messages:
+                        context = f"\nContexto de conversación reciente:\n" + "\n".join(recent_messages) + "\n"
 
                 prompt = f"""
 Analiza el siguiente mensaje del usuario considerando el contexto de la conversación:
@@ -377,10 +396,33 @@ Analiza el siguiente mensaje del usuario considerando el contexto de la conversa
 Mensaje actual: "{input_text}"
 
 Responde SOLO con un JSON válido que contenga:
+- "action": una de estas opciones:
+  * "consultar_disponibilidad_especifica" - si menciona un tipo específico de habitación Y/O fecha
+  * "consultar_disponibilidad_general" - si pregunta por disponibilidad sin especificar tipo o fecha
+  * "crear_reserva" - si quiere hacer una reserva o proporciona datos para reserva
   * "listar_tipos" - si pregunta por tipos de habitaciones o precios
   * "listar_reservas" - si quiere ver reservas existentes
   * "general" - para cualquier otra consulta
 - "tipo_habitacion": extraer si menciona "doble", "suite", etc. (null si no especifica)
+- "fecha": extraer si menciona una fecha específica (null si no especifica)
+- "datos_reserva": objeto con nombre, email, teléfono, personas si los proporciona
+
+Ejemplos:
+- "¿hay disponibilidad para doble estándar el 25 de julio?" → {{"action": "consultar_disponibilidad_especifica", "tipo_habitacion": "Doble Estándar", "fecha": "2025-07-25"}}
+- "si, quiero reservar" (después de consultar disponibilidad) → {{"action": "crear_reserva"}}
+- "mi nombre es Juan, email juan@email.com" → {{"action": "crear_reserva", "datos_reserva": {{"nombre": "Juan", "email": "juan@email.com"}}}}
+"""
+                
+                try:
+                    response = self.llm.invoke(prompt)
+                    import json
+                    result = json.loads(response.content.strip())
+                    logger.info(f"🧠 ANÁLISIS: {result}")
+                    return result
+                except Exception as e:
+                    logger.error(f"❌ Error analizando intención: {str(e)}")
+                    return {"action": "general"}
+
             async def _handle_general_query(self, input_text, chat_history=None):
                 # Maneja consultas generales SOLO usando datos reales y herramientas, nunca inventa.
                 logger.info("🔍 _handle_general_query: forzando uso de herramientas reales")
@@ -392,7 +434,7 @@ Responde SOLO con un JSON válido que contenga:
                 for hab in tipos_result:
                     if "error" not in hab:
                         response += f"🛏️ {hab['tipo']}\n📝 {hab['descripcion']}\n💰 {hab['precio']} {hab['moneda']} por noche\n🏠 Habitaciones totales: {hab['total']}\n\n"
-                response += f"¿Te gustaría consultar disponibilidad para alguna fecha o tipo de habitación? Si quieres reservar, dime los datos y lo gestiono."
+                response += "¿Te gustaría consultar disponibilidad para alguna fecha o tipo de habitación? Si quieres reservar, dime los datos y lo gestiono."
                 return response
                 
                 try:
@@ -515,6 +557,7 @@ Responde SOLO con un JSON válido que contenga:
                         response += "\n"
                 
                 return response
+
             async def _handle_reservation_request(self, intent_result, input_text, chat_history=None):
                 logger.info(f"🎫 PROCESANDO RESERVA: {intent_result}")
                 import re
@@ -665,42 +708,6 @@ Responde SOLO con un JSON válido que contenga:
                     return date_str
                 except:
                     return date_str
-            
-            async def _handle_general_query(self, input_text, chat_history=None):
-                """Maneja consultas generales usando el historial de conversación"""
-                
-                # Construir contexto del historial
-                if chat_history:
-                    recent_messages = []
-                    for msg in chat_history[-6:]:  # Últimos 6 mensajes para contexto
-                        if hasattr(msg, 'content'):
-                            if isinstance(msg, HumanMessage):
-                                recent_messages.append(f"Usuario: {msg.content}")
-                            elif isinstance(msg, AIMessage):
-                                recent_messages.append(f"Asistente: {msg.content}")
-                                    recent_messages.append(f"Asistente: {msg.content}")
-                    
-                    if recent_messages:
-                        context = f"\nHistorial de conversación:\n" + "\n".join(recent_messages[-4:]) + "\n"
-
-
-Responde de manera amigable y profesional en español, considerando el contexto de la conversación. 
-Puedes ayudar con:
-- Consultar disponibilidad de habitaciones
-- Ver tipos de habitaciones y precios  
-- Crear reservas
-- Listar reservas existentes
-
-Si la consulta no está relacionada con el hotel, recuerda amablemente que solo puedes ayudar con temas del hotel AselvIA.
-Si parece que el usuario quiere continuar con una reserva mencionada anteriormente, guíalo para completar los datos necesarios.
-"""
-                
-                try:
-                    response = self.llm.invoke(prompt)
-                    return response.content
-                except Exception as e:
-                    logger.error(f"❌ Error en consulta general: {str(e)}")
-                    return "Lo siento, ocurrió un error. ¿Podrías reformular tu pregunta?"
         
         agent = IntelligentHotelAgent(llm, hotel_tools)
         logger.info("Agente inteligente inicializado correctamente")
