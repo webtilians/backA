@@ -75,6 +75,56 @@ def guardar_reservas(reservas: List[Dict]) -> bool:
         logger.error(f"Error guardando reservas.json: {e}")
         return False
 
+def cargar_trabajadores() -> List[Dict]:
+    """Carga datos de trabajadores"""
+    try:
+        with open("trabajadores.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("trabajadores", [])
+    except Exception as e:
+        logger.error(f"Error cargando trabajadores.json: {e}")
+        return []
+
+def cargar_turnos() -> Dict:
+    """Carga datos de turnos"""
+    try:
+        with open("turnos.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error cargando turnos.json: {e}")
+        return {"turnos": [], "configuracion_turnos": {}}
+
+def guardar_turnos(data_turnos: Dict) -> bool:
+    """Guarda datos de turnos"""
+    try:
+        with open("turnos.json", "w", encoding="utf-8") as f:
+            json.dump(data_turnos, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logger.error(f"Error guardando turnos.json: {e}")
+        return False
+
+def cargar_nominas() -> List[Dict]:
+    """Carga datos de nóminas"""
+    try:
+        with open("nominas.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("nominas", [])
+    except Exception as e:
+        logger.error(f"Error cargando nominas.json: {e}")
+        return []
+
+def guardar_nominas(nominas: List[Dict]) -> bool:
+    """Guarda datos de nóminas"""
+    try:
+        data = {"nominas": nominas}
+        with open("nominas.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logger.error(f"Error guardando nominas.json: {e}")
+        return False
+
 def normalizar_fecha(texto: str) -> str:
     """
     Normaliza fechas de diferentes formatos a YYYY-MM-DD
@@ -452,9 +502,224 @@ def listar_reservas() -> str:
         logger.error(f"Error en listar_reservas: {e}")
         return f"Error getting reservations: {str(e)}"
 
+@tool
+def listar_trabajadores() -> str:
+    """List all hotel staff members with their information"""
+    logger.info("👥 Listing hotel staff")
+    
+    try:
+        trabajadores = cargar_trabajadores()
+        
+        if not trabajadores:
+            return "👥 No staff members registered."
+        
+        resultado = f"👥 **Hotel Staff ({len(trabajadores)} employees)**\n\n"
+        
+        for emp in trabajadores:
+            resultado += f"🆔 **{emp['id']} - {emp['nombre']}**\n"
+            resultado += f"💼 Position: {emp['puesto']}\n"
+            resultado += f"🏢 Department: {emp['departamento']}\n"
+            resultado += f"📧 Email: {emp['email']}\n"
+            resultado += f"📞 Phone: {emp['telefono']}\n"
+            resultado += f"💰 Hourly Rate: €{emp['salario_base_hora']}\n"
+            resultado += f"📅 Start Date: {emp['fecha_ingreso']}\n"
+            resultado += f"⭐ Status: {emp['estado']}\n"
+            resultado += f"🕐 Preferred Shift: {emp['turno_preferido']}\n"
+            resultado += f"🎯 Skills: {', '.join(emp['habilidades'])}\n\n"
+        
+        return resultado
+        
+    except Exception as e:
+        logger.error(f"Error en listar_trabajadores: {e}")
+        return f"Error getting staff list: {str(e)}"
+
+@tool
+def consultar_turnos(fecha: str = "", empleado_id: str = "") -> str:
+    """Check work shifts for a specific date or employee"""
+    logger.info(f"🕐 Consulting shifts for date: {fecha}, employee: {empleado_id}")
+    
+    try:
+        data_turnos = cargar_turnos()
+        turnos = data_turnos.get("turnos", [])
+        trabajadores = cargar_trabajadores()
+        
+        # Crear diccionario de empleados para lookups rápidos
+        emp_dict = {emp['id']: emp for emp in trabajadores}
+        
+        turnos_filtrados = turnos
+        
+        # Filtrar por fecha si se proporciona
+        if fecha:
+            fecha_normalizada = normalizar_fecha(fecha)
+            if fecha_normalizada:
+                turnos_filtrados = [t for t in turnos_filtrados if t['fecha'] == fecha_normalizada]
+            else:
+                turnos_filtrados = [t for t in turnos_filtrados if fecha in t['fecha']]
+        
+        # Filtrar por empleado si se proporciona
+        if empleado_id:
+            turnos_filtrados = [t for t in turnos_filtrados if t['empleado_id'] == empleado_id]
+        
+        if not turnos_filtrados:
+            return f"🕐 No shifts found for the specified criteria."
+        
+        resultado = f"🕐 **Work Shifts ({len(turnos_filtrados)} found)**\n\n"
+        
+        for turno in turnos_filtrados:
+            empleado = emp_dict.get(turno['empleado_id'], {})
+            nombre_empleado = empleado.get('nombre', 'Unknown Employee')
+            puesto = empleado.get('puesto', 'Unknown Position')
+            
+            resultado += f"📅 **Date:** {turno['fecha']}\n"
+            resultado += f"👤 **Employee:** {nombre_empleado} ({turno['empleado_id']})\n"
+            resultado += f"💼 **Position:** {puesto}\n"
+            resultado += f"🕐 **Shift:** {turno['turno']} ({turno['hora_inicio']} - {turno['hora_fin']})\n"
+            resultado += f"⏰ **Hours:** {turno['horas_trabajadas']}h\n"
+            resultado += f"📊 **Status:** {turno['estado']}\n"
+            if turno.get('notas'):
+                resultado += f"📝 **Notes:** {turno['notas']}\n"
+            resultado += "\n"
+        
+        return resultado
+        
+    except Exception as e:
+        logger.error(f"Error en consultar_turnos: {e}")
+        return f"Error checking shifts: {str(e)}"
+
+@tool
+def asignar_turno(empleado_id: str, fecha: str, turno: str, hora_inicio: str = "", hora_fin: str = "", notas: str = "") -> str:
+    """Assign a work shift to an employee"""
+    logger.info(f"📋 Assigning shift: {empleado_id}, {fecha}, {turno}")
+    
+    try:
+        # Verificar que el empleado existe
+        trabajadores = cargar_trabajadores()
+        empleado = next((emp for emp in trabajadores if emp['id'] == empleado_id), None)
+        
+        if not empleado:
+            return f"❌ Employee {empleado_id} not found."
+        
+        # Normalizar fecha
+        fecha_normalizada = normalizar_fecha(fecha)
+        if not fecha_normalizada:
+            return f"❌ Invalid date format: {fecha}"
+        
+        # Cargar configuración de turnos
+        data_turnos = cargar_turnos()
+        turnos = data_turnos.get("turnos", [])
+        config_turnos = data_turnos.get("configuracion_turnos", {})
+        tipos_turno = config_turnos.get("tipos_turno", {})
+        
+        # Verificar si ya existe un turno para ese empleado en esa fecha
+        turno_existente = next((t for t in turnos if t['empleado_id'] == empleado_id and t['fecha'] == fecha_normalizada), None)
+        if turno_existente:
+            return f"❌ Employee {empleado['nombre']} already has a shift assigned for {fecha_normalizada}"
+        
+        # Configurar horarios según tipo de turno
+        if turno in tipos_turno and not hora_inicio:
+            hora_inicio = tipos_turno[turno]['inicio']
+            hora_fin = tipos_turno[turno]['fin']
+        
+        # Calcular horas trabajadas
+        try:
+            inicio = datetime.datetime.strptime(hora_inicio, "%H:%M")
+            fin = datetime.datetime.strptime(hora_fin, "%H:%M")
+            if fin < inicio:  # Turno nocturno que cruza medianoche
+                fin += datetime.timedelta(days=1)
+            horas_trabajadas = (fin - inicio).total_seconds() / 3600
+        except:
+            horas_trabajadas = 8  # Por defecto
+        
+        # Crear nuevo turno
+        nuevo_turno = {
+            "id": f"TURN{str(uuid.uuid4())[:6].upper()}",
+            "empleado_id": empleado_id,
+            "fecha": fecha_normalizada,
+            "turno": turno,
+            "hora_inicio": hora_inicio,
+            "hora_fin": hora_fin,
+            "horas_trabajadas": round(horas_trabajadas, 2),
+            "estado": "programado",
+            "notas": notas
+        }
+        
+        turnos.append(nuevo_turno)
+        data_turnos["turnos"] = turnos
+        
+        if guardar_turnos(data_turnos):
+            resultado = f"✅ **Shift Assigned Successfully!**\n\n"
+            resultado += f"🆔 **Shift ID:** {nuevo_turno['id']}\n"
+            resultado += f"👤 **Employee:** {empleado['nombre']} ({empleado_id})\n"
+            resultado += f"📅 **Date:** {fecha_normalizada}\n"
+            resultado += f"🕐 **Shift:** {turno} ({hora_inicio} - {hora_fin})\n"
+            resultado += f"⏰ **Hours:** {horas_trabajadas}h\n"
+            if notas:
+                resultado += f"📝 **Notes:** {notas}\n"
+            
+            return resultado
+        else:
+            return "❌ Error saving shift assignment"
+            
+    except Exception as e:
+        logger.error(f"Error en asignar_turno: {e}")
+        return f"❌ Error assigning shift: {str(e)}"
+
+@tool
+def consultar_nominas(empleado_id: str = "", mes: str = "") -> str:
+    """Check payroll information for employees"""
+    logger.info(f"💰 Consulting payrolls for employee: {empleado_id}, month: {mes}")
+    
+    try:
+        nominas = cargar_nominas()
+        trabajadores = cargar_trabajadores()
+        
+        # Crear diccionario de empleados
+        emp_dict = {emp['id']: emp for emp in trabajadores}
+        
+        nominas_filtradas = nominas
+        
+        # Filtrar por empleado si se proporciona
+        if empleado_id:
+            nominas_filtradas = [n for n in nominas_filtradas if n['empleado_id'] == empleado_id]
+        
+        # Filtrar por mes si se proporciona
+        if mes:
+            nominas_filtradas = [n for n in nominas_filtradas if mes in n['mes']]
+        
+        if not nominas_filtradas:
+            return f"💰 No payroll records found for the specified criteria."
+        
+        resultado = f"💰 **Payroll Information ({len(nominas_filtradas)} records)**\n\n"
+        
+        for nomina in nominas_filtradas:
+            empleado = emp_dict.get(nomina['empleado_id'], {})
+            nombre_empleado = empleado.get('nombre', 'Unknown Employee')
+            
+            resultado += f"📄 **Payroll ID:** {nomina['id']}\n"
+            resultado += f"👤 **Employee:** {nombre_empleado} ({nomina['empleado_id']})\n"
+            resultado += f"📅 **Month:** {nomina['mes']}\n"
+            resultado += f"⏰ **Regular Hours:** {nomina['horas_regulares']}h\n"
+            resultado += f"⏰ **Extra Hours:** {nomina['horas_extra']}h\n"
+            resultado += f"🎉 **Holiday Hours:** {nomina['horas_festivos']}h\n"
+            resultado += f"💰 **Base Salary:** €{nomina['salario_base']:.2f}\n"
+            resultado += f"💵 **Extra Pay:** €{nomina['extra_horas']:.2f}\n"
+            resultado += f"🎁 **Holiday Bonus:** €{nomina['bonus_festivos']:.2f}\n"
+            resultado += f"💸 **Gross Total:** €{nomina['total_bruto']:.2f}\n"
+            resultado += f"🏛️ **SS Deductions:** €{nomina['deducciones_ss']:.2f}\n"
+            resultado += f"🏛️ **Tax Deductions:** €{nomina['deducciones_irpf']:.2f}\n"
+            resultado += f"✅ **Net Total:** €{nomina['total_neto']:.2f}\n"
+            resultado += f"📊 **Status:** {nomina['estado']}\n\n"
+        
+        return resultado
+        
+    except Exception as e:
+        logger.error(f"Error en consultar_nominas: {e}")
+        return f"Error checking payrolls: {str(e)}"
+
 # --- CONFIGURACIÓN DEL AGENTE ---
 # Herramientas disponibles
-tools = [consultar_disponibilidad, listar_tipos_habitaciones, crear_reserva, listar_reservas]
+tools = [consultar_disponibilidad, listar_tipos_habitaciones, crear_reserva, listar_reservas, 
+         listar_trabajadores, consultar_turnos, asignar_turno, consultar_nominas]
 
 # Crear prompt personalizado FORZANDO inglés con instrucciones múltiples
 prompt = ChatPromptTemplate.from_messages([
@@ -469,7 +734,10 @@ prompt = ChatPromptTemplate.from_messages([
      "- Make hotel reservations\n" 
      "- Provide pricing information\n"
      "- Answer questions about the hotel\n"
-     "- Show room types when customers ask about rooms or room types\n\n"
+     "- Show room types when customers ask about rooms or room types\n"
+     "- Manage hotel staff information\n"
+     "- Handle work shift scheduling\n"
+     "- Provide payroll information\n\n"
      "IMPORTANT: When users ask about room types, rooms available, or what kind of rooms you have,\n"
      "YOU MUST ALWAYS call the listar_tipos_habitaciones function to show them the complete list with prices.\n"
      "DO NOT just describe rooms - ALWAYS USE THE FUNCTION to get real data.\n\n"
@@ -477,7 +745,11 @@ prompt = ChatPromptTemplate.from_messages([
      "- For room types/what rooms: CALL listar_tipos_habitaciones()\n"
      "- For availability: CALL consultar_disponibilidad()\n"
      "- For making reservations: CALL crear_reserva()\n"
-     "- For viewing bookings: CALL listar_reservas()\n\n"
+     "- For viewing bookings: CALL listar_reservas()\n"
+     "- For staff information: CALL listar_trabajadores()\n"
+     "- For work shifts: CALL consultar_turnos()\n"
+     "- For assigning shifts: CALL asignar_turno()\n"
+     "- For payroll info: CALL consultar_nominas()\n\n"
      "Current date: July 28th, 2025\n"
      "LANGUAGE RULE: ENGLISH ONLY - NO EXCEPTIONS\n"
      "GREETING: Start with 'Hello!' or 'Hi!' never 'Hola!'\n"

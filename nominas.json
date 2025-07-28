@@ -1,0 +1,38 @@
+{
+  "nominas": [
+    {
+      "id": "NOM_2025_07_EMP001",
+      "empleado_id": "EMP001",
+      "mes": "2025-07",
+      "horas_regulares": 160,
+      "horas_extra": 8,
+      "horas_festivos": 0,
+      "salario_base": 2000.00,
+      "extra_horas": 150.00,
+      "bonus_festivos": 0.00,
+      "total_bruto": 2150.00,
+      "deducciones_ss": 149.85,
+      "deducciones_irpf": 193.50,
+      "total_neto": 1806.65,
+      "fecha_calculo": "2025-07-28",
+      "estado": "calculada"
+    },
+    {
+      "id": "NOM_2025_07_EMP002",
+      "empleado_id": "EMP002",
+      "mes": "2025-07",
+      "horas_regulares": 168,
+      "horas_extra": 4,
+      "horas_festivos": 8,
+      "salario_base": 1848.00,
+      "extra_horas": 66.00,
+      "bonus_festivos": 176.00,
+      "total_bruto": 2090.00,
+      "deducciones_ss": 145.28,
+      "deducciones_irpf": 188.10,
+      "total_neto": 1756.62,
+      "fecha_calculo": "2025-07-28",
+      "estado": "calculada"
+    }
+  ]
+}

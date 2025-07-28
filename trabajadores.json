@@ -1,0 +1,72 @@
+{
+  "trabajadores": [
+    {
+      "id": "EMP001",
+      "nombre": "María García López",
+      "puesto": "Recepcionista",
+      "email": "maria.garcia@hotelaselvIA.com",
+      "telefono": "+34 666 123 456",
+      "fecha_ingreso": "2023-01-15",
+      "salario_base_hora": 12.50,
+      "departamento": "Recepción",
+      "turno_preferido": "mañana",
+      "habilidades": ["Inglés", "Francés", "Atención al cliente", "Sistemas hoteleros"],
+      "estado": "activo",
+      "direccion": "Calle Mayor 123, Madrid",
+      "dni": "12345678A",
+      "numero_seguridad_social": "12 1234567890",
+      "cuenta_bancaria": "ES12 1234 5678 9012 3456 7890"
+    },
+    {
+      "id": "EMP002",
+      "nombre": "Carlos Rodríguez Martín",
+      "puesto": "Conserje",
+      "email": "carlos.rodriguez@hotelaselvIA.com",
+      "telefono": "+34 666 234 567",
+      "fecha_ingreso": "2022-08-20",
+      "salario_base_hora": 11.00,
+      "departamento": "Conserjería",
+      "turno_preferido": "tarde",
+      "habilidades": ["Mantenimiento básico", "Atención al cliente", "Gestión de equipajes"],
+      "estado": "activo",
+      "direccion": "Avenida de la Paz 45, Madrid",
+      "dni": "23456789B",
+      "numero_seguridad_social": "12 2345678901",
+      "cuenta_bancaria": "ES12 2345 6789 0123 4567 8901"
+    },
+    {
+      "id": "EMP003",
+      "nombre": "Ana Fernández Silva",
+      "puesto": "Housekeeping Manager",
+      "email": "ana.fernandez@hotelaselvIA.com",
+      "telefono": "+34 666 345 678",
+      "fecha_ingreso": "2021-03-10",
+      "salario_base_hora": 15.75,
+      "departamento": "Housekeeping",
+      "turno_preferido": "mañana",
+      "habilidades": ["Gestión de equipos", "Control de calidad", "Inventario", "Inglés"],
+      "estado": "activo",
+      "direccion": "Plaza del Sol 8, Madrid",
+      "dni": "34567890C",
+      "numero_seguridad_social": "12 3456789012",
+      "cuenta_bancaria": "ES12 3456 7890 1234 5678 9012"
+    },
+    {
+      "id": "EMP004",
+      "nombre": "David López Hernández",
+      "puesto": "Técnico de Mantenimiento",
+      "email": "david.lopez@hotelaselvIA.com",
+      "telefono": "+34 666 456 789",
+      "fecha_ingreso": "2022-11-05",
+      "salario_base_hora": 14.25,
+      "departamento": "Mantenimiento",
+      "turno_preferido": "mañana",
+      "habilidades": ["Electricidad", "Fontanería", "Climatización", "Reparaciones generales"],
+      "estado": "activo",
+      "direccion": "Calle de la Luna 67, Madrid",
+      "dni": "45678901D",
+      "numero_seguridad_social": "12 4567890123",
+      "cuenta_bancaria": "ES12 4567 8901 2345 6789 0123"
+    }
+  ]
+}

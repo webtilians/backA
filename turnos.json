@@ -1,0 +1,58 @@
+{
+  "turnos": [
+    {
+      "id": "TURN001",
+      "empleado_id": "EMP001",
+      "fecha": "2025-07-29",
+      "turno": "mañana",
+      "hora_inicio": "08:00",
+      "hora_fin": "16:00",
+      "horas_trabajadas": 8,
+      "estado": "programado",
+      "notas": "Turno de recepción principal"
+    },
+    {
+      "id": "TURN002",
+      "empleado_id": "EMP002",
+      "fecha": "2025-07-29",
+      "turno": "tarde",
+      "hora_inicio": "16:00",
+      "hora_fin": "24:00",
+      "horas_trabajadas": 8,
+      "estado": "programado",
+      "notas": "Turno de conserjería nocturna"
+    },
+    {
+      "id": "TURN003",
+      "empleado_id": "EMP003",
+      "fecha": "2025-07-29",
+      "turno": "mañana",
+      "hora_inicio": "07:00",
+      "hora_fin": "15:00",
+      "horas_trabajadas": 8,
+      "estado": "programado",
+      "notas": "Supervisión limpieza habitaciones"
+    },
+    {
+      "id": "TURN004",
+      "empleado_id": "EMP004",
+      "fecha": "2025-07-29",
+      "turno": "mañana",
+      "hora_inicio": "09:00",
+      "hora_fin": "17:00",
+      "horas_trabajadas": 8,
+      "estado": "programado",
+      "notas": "Mantenimiento preventivo"
+    }
+  ],
+  "configuracion_turnos": {
+    "tipos_turno": {
+      "mañana": {"inicio": "07:00", "fin": "15:00"},
+      "tarde": {"inicio": "15:00", "fin": "23:00"},
+      "noche": {"inicio": "23:00", "fin": "07:00"}
+    },
+    "horas_extra_factor": 1.5,
+    "festivos_factor": 2.0,
+    "domingo_factor": 1.25
+  }
+}
