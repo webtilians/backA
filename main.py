@@ -125,6 +125,28 @@ def guardar_nominas(nominas: List[Dict]) -> bool:
         logger.error(f"Error guardando nominas.json: {e}")
         return False
 
+def buscar_empleado_por_nombre(nombre_busqueda: str) -> Dict:
+    """Busca un empleado por nombre (flexible - acepta nombres parciales)"""
+    trabajadores = cargar_trabajadores()
+    nombre_busqueda = nombre_busqueda.lower().strip()
+    
+    # Buscar coincidencia exacta primero
+    for emp in trabajadores:
+        if emp['nombre'].lower() == nombre_busqueda:
+            return emp
+        if emp['id'].lower() == nombre_busqueda:
+            return emp
+    
+    # Buscar por nombres parciales (Carlos, María, etc.)
+    for emp in trabajadores:
+        nombres = emp['nombre'].lower().split()
+        if any(nombre_busqueda in nombre for nombre in nombres):
+            return emp
+        if nombre_busqueda in emp['nombre'].lower():
+            return emp
+    
+    return None
+
 def normalizar_fecha(texto: str) -> str:
     """
     Normaliza fechas de diferentes formatos a YYYY-MM-DD
@@ -535,7 +557,7 @@ def listar_trabajadores() -> str:
 
 @tool
 def consultar_turnos(fecha: str = "", empleado_id: str = "") -> str:
-    """Check work shifts for a specific date or employee"""
+    """Check work shifts for a specific date or employee (accepts employee name or ID)"""
     logger.info(f"🕐 Consulting shifts for date: {fecha}, employee: {empleado_id}")
     
     try:
@@ -556,11 +578,28 @@ def consultar_turnos(fecha: str = "", empleado_id: str = "") -> str:
             else:
                 turnos_filtrados = [t for t in turnos_filtrados if fecha in t['fecha']]
         
-        # Filtrar por empleado si se proporciona
+        # Filtrar por empleado si se proporciona (acepta ID o nombre)
         if empleado_id:
-            turnos_filtrados = [t for t in turnos_filtrados if t['empleado_id'] == empleado_id]
+            # Primero intentar por ID directo
+            turnos_por_id = [t for t in turnos_filtrados if t['empleado_id'] == empleado_id]
+            
+            if turnos_por_id:
+                turnos_filtrados = turnos_por_id
+            else:
+                # Si no encuentra por ID, buscar por nombre
+                empleado_encontrado = buscar_empleado_por_nombre(empleado_id)
+                if empleado_encontrado:
+                    turnos_filtrados = [t for t in turnos_filtrados if t['empleado_id'] == empleado_encontrado['id']]
+                else:
+                    # Si tampoco encuentra por nombre, devolver mensaje informativo
+                    return f"🕐 No employee found with name or ID '{empleado_id}'. Available employees:\n" + \
+                           "\n".join([f"- {emp['nombre']} ({emp['id']})" for emp in trabajadores])
         
         if not turnos_filtrados:
+            if empleado_id:
+                empleado_info = buscar_empleado_por_nombre(empleado_id) or emp_dict.get(empleado_id)
+                if empleado_info:
+                    return f"🕐 No shifts currently scheduled for {empleado_info['nombre']} ({empleado_info['id']})."
             return f"🕐 No shifts found for the specified criteria."
         
         resultado = f"🕐 **Work Shifts ({len(turnos_filtrados)} found)**\n\n"
@@ -588,16 +627,24 @@ def consultar_turnos(fecha: str = "", empleado_id: str = "") -> str:
 
 @tool
 def asignar_turno(empleado_id: str, fecha: str, turno: str, hora_inicio: str = "", hora_fin: str = "", notas: str = "") -> str:
-    """Assign a work shift to an employee"""
+    """Assign a work shift to an employee (accepts employee name or ID)"""
     logger.info(f"📋 Assigning shift: {empleado_id}, {fecha}, {turno}")
     
     try:
-        # Verificar que el empleado existe
-        trabajadores = cargar_trabajadores()
-        empleado = next((emp for emp in trabajadores if emp['id'] == empleado_id), None)
-        
+        # Buscar empleado por ID o nombre
+        empleado = buscar_empleado_por_nombre(empleado_id)
         if not empleado:
-            return f"❌ Employee {empleado_id} not found."
+            # Si no encontró por nombre, intentar como ID directo
+            trabajadores = cargar_trabajadores()
+            empleado = next((emp for emp in trabajadores if emp['id'] == empleado_id), None)
+            
+        if not empleado:
+            available_employees = cargar_trabajadores()
+            return f"❌ Employee '{empleado_id}' not found. Available employees:\n" + \
+                   "\n".join([f"- {emp['nombre']} ({emp['id']})" for emp in available_employees])
+        
+        # Usar el ID real del empleado encontrado
+        empleado_id_real = empleado['id']
         
         # Normalizar fecha
         fecha_normalizada = normalizar_fecha(fecha)
@@ -611,7 +658,7 @@ def asignar_turno(empleado_id: str, fecha: str, turno: str, hora_inicio: str = "
         tipos_turno = config_turnos.get("tipos_turno", {})
         
         # Verificar si ya existe un turno para ese empleado en esa fecha
-        turno_existente = next((t for t in turnos if t['empleado_id'] == empleado_id and t['fecha'] == fecha_normalizada), None)
+        turno_existente = next((t for t in turnos if t['empleado_id'] == empleado_id_real and t['fecha'] == fecha_normalizada), None)
         if turno_existente:
             return f"❌ Employee {empleado['nombre']} already has a shift assigned for {fecha_normalizada}"
         
@@ -633,7 +680,7 @@ def asignar_turno(empleado_id: str, fecha: str, turno: str, hora_inicio: str = "
         # Crear nuevo turno
         nuevo_turno = {
             "id": f"TURN{str(uuid.uuid4())[:6].upper()}",
-            "empleado_id": empleado_id,
+            "empleado_id": empleado_id_real,
             "fecha": fecha_normalizada,
             "turno": turno,
             "hora_inicio": hora_inicio,
@@ -649,7 +696,7 @@ def asignar_turno(empleado_id: str, fecha: str, turno: str, hora_inicio: str = "
         if guardar_turnos(data_turnos):
             resultado = f"✅ **Shift Assigned Successfully!**\n\n"
             resultado += f"🆔 **Shift ID:** {nuevo_turno['id']}\n"
-            resultado += f"👤 **Employee:** {empleado['nombre']} ({empleado_id})\n"
+            resultado += f"👤 **Employee:** {empleado['nombre']} ({empleado_id_real})\n"
             resultado += f"📅 **Date:** {fecha_normalizada}\n"
             resultado += f"🕐 **Shift:** {turno} ({hora_inicio} - {hora_fin})\n"
             resultado += f"⏰ **Hours:** {horas_trabajadas}h\n"
