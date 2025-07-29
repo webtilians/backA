@@ -811,15 +811,13 @@ prompt = ChatPromptTemplate.from_messages([
 
 # LLM con configuración optimizada para inglés
 llm = ChatOpenAI(
-    model="gpt-4o",
-    temperature=0.0,  # Temperatura 0 para máxima consistencia
     api_key=openai_api_key,
-    model_kwargs={
-        "top_p": 0.8,  # Más restrictivo
-        "frequency_penalty": 0.2,  # Penalizar repeticiones
-        "presence_penalty": 0.3,   # Penalizar palabras comunes (español)
-        "max_tokens": 500,  # Limitar respuesta para control
-    }
+    temperature=0.0,
+    model_name="gpt-4o",
+    max_tokens=2048,
+    top_p=1.0,
+    frequency_penalty=0.0,
+    presence_penalty=0.0,
 )
 
 # Crear el agente
